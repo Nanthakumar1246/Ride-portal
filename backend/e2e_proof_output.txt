@@ -1,0 +1,531 @@
+﻿ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù
+Γòæ          ARCHERIDE ΓÇö FULL E2E PROOF TEST                              Γòæ
+Γòæ          Real JWT Auth ┬╖ DB Proof ┬╖ Dashboard Proof                   Γòæ
+ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  STEP 1 ΓÇö AUTHENTICATION (Real JWT)
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+    Endpoint              : POST /api/auth/login
+    HTTP Status           : 200
+    Login Success         : Γ£à YES
+    Token (first 50 chars): eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjgzOΓÇª
+    User ID               : 838f6bbb-fc89-4200-a34d-aaec9f58576c
+    User Name             : ajaykumar j
+    User Email            : ajaykumar.j@arche.global
+    User Role             : ADMIN
+
+  Γ£à Authentication: PASS ΓÇö Real JWT obtained
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MODULE: RISK
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  ΓöÇΓöÇ POST ΓÇö Create Record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : POST /api/risks
+
+    ≡ƒôª Request Payload:
+       {
+         "risk_title": "E2E Proof: Production Memory Leak",
+         "risk_description": "Memory consumption grows 15% per hour under sustained load, risking OOM crash in production after 6 hours of peak traffic",
+         "priority": "Critical",
+         "category": "Technical",
+         "status": "Open",
+         "account": "Arche Global",
+         "probability": 4,
+         "impact": 5,
+         "identified_by": "ajaykumar.j@arche.global",
+         "identified_date": "2026-08-04",
+         "mitigation_strategy": "Implement memory profiling and garbage collection optimization",
+         "mitigation_owner": "backend-team@arche.global",
+         "target_mitigation_date": "2026-08-20",
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+    HTTP Status           : 200
+    Result                : Γ£à PASS
+    Record UUID           : 59518028-3f5b-4736-999c-22012964cd18
+    Entity ID             : RSK-ARC-003
+
+    ≡ƒôª Full API Response (data):
+       {
+         "id": "59518028-3f5b-4736-999c-22012964cd18",
+         "risk_id": "RSK-ARC-003",
+         "manual_project_id": null,
+         "project_description": null,
+         "account": "Arche Global",
+         "identified_date": "2026-08-03T18:30:00.000Z",
+         "identified_by": "ajaykumar.j@arche.global",
+         "status": "Open",
+         "priority": "Critical",
+         "category": "Technical",
+         "risk_title": "E2E Proof: Production Memory Leak",
+         "risk_description": "Memory consumption grows 15% per hour under sustained load, risking OOM crash in production after 6 hours of peak traffic",
+         "probability": "4",
+         "impact": "5",
+         "risk_score": 20,
+         "mitigation_strategy": "Implement memory profiling and garbage collection optimization",
+         "mitigation_owner": "backend-team@arche.global",
+         "target_mitigation_date": "2026-08-19T18:30:00.000Z",
+         "current_status": null,
+         "last_reviewed_date": null,
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT",
+         "created_by": "838f6bbb-fc89-4200-a34d-aaec9f58576c",
+         "created_at": "2026-08-04T11:33:44.283Z",
+         "updated_at": "2026-08-04T11:33:44.283Z",
+         "project_id": null
+       }
+
+  ΓöÇΓöÇ DATABASE ΓÇö Direct PostgreSQL Query ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Table                 : risks
+    Query                 : SELECT * FROM risks WHERE id = '59518028-3f5b-4736-999c-22012964cd18'
+    Rows Found            : 1
+    DB id                 : 59518028-3f5b-4736-999c-22012964cd18
+    DB risk_id            : RSK-ARC-003
+    DB status             : Open
+    DB created_at         : 2026-08-04T11:33:44.283Z
+    Result                : Γ£à PASS ΓÇö Record exists in PostgreSQL
+
+  ΓöÇΓöÇ GET ΓÇö Fetch Record by ID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/risks/59518028-3f5b-4736-999c-22012964cd18
+    HTTP Status           : 200
+    Fetched UUID          : 59518028-3f5b-4736-999c-22012964cd18
+    Fetched Entity ID     : RSK-ARC-003
+    Match                 : Γ£à IDs match
+    Result                : Γ£à PASS
+
+  ΓöÇΓöÇ LIST ΓÇö Verify in Module List ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/risks
+    Total Records         : 30
+    Our Record Found      : Γ£à YES
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MODULE: ISSUE
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  ΓöÇΓöÇ POST ΓÇö Create Record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : POST /api/issues
+
+    ≡ƒôª Request Payload:
+       {
+         "issue_title": "E2E Proof: Login Session Timeout",
+         "issue_description": "Users are getting logged out after 15 minutes of inactivity despite the configured 8-hour session timeout",
+         "priority": "High",
+         "category": "Authentication",
+         "status": "Open",
+         "account": "Arche Global",
+         "severity": "Major",
+         "reported_by": "ajaykumar.j@arche.global",
+         "reported_date": "2026-08-04",
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+    HTTP Status           : 200
+    Result                : Γ£à PASS
+    Record UUID           : 3b2bd9f4-1160-43be-8dc9-60d84a85ac95
+    Entity ID             : ISS-ARC-003
+
+    ≡ƒôª Full API Response (data):
+       {
+         "id": "3b2bd9f4-1160-43be-8dc9-60d84a85ac95",
+         "issue_id": "ISS-ARC-003",
+         "issue_title": "E2E Proof: Login Session Timeout",
+         "issue_description": "Users are getting logged out after 15 minutes of inactivity despite the configured 8-hour session timeout",
+         "status": "Open",
+         "priority": "High",
+         "project_id": null,
+         "created_by": null,
+         "created_at": "2026-08-04T11:33:44.692Z",
+         "updated_at": "2026-08-04T11:33:44.692Z",
+         "manual_project_id": null,
+         "project_description": null,
+         "account": "Arche Global",
+         "reported_date": "2026-08-03T18:30:00.000Z",
+         "reported_by": "ajaykumar.j@arche.global",
+         "category": "Authentication",
+         "impact_on_project": null,
+         "affected_system": null,
+         "assigned_to": null,
+         "target_resolution_date": null,
+         "actual_resolution_date": null,
+         "resolution_details": null,
+         "root_cause_analysis": null,
+         "last_updated": "2026-08-04T11:33:44.692Z",
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+
+  ΓöÇΓöÇ DATABASE ΓÇö Direct PostgreSQL Query ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Table                 : issues
+    Query                 : SELECT * FROM issues WHERE id = '3b2bd9f4-1160-43be-8dc9-60d84a85ac95'
+    Rows Found            : 1
+    DB id                 : 3b2bd9f4-1160-43be-8dc9-60d84a85ac95
+    DB issue_id           : ISS-ARC-003
+    DB status             : Open
+    DB created_at         : 2026-08-04T11:33:44.692Z
+    Result                : Γ£à PASS ΓÇö Record exists in PostgreSQL
+
+  ΓöÇΓöÇ GET ΓÇö Fetch Record by ID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/issues/3b2bd9f4-1160-43be-8dc9-60d84a85ac95
+    HTTP Status           : 200
+    Fetched UUID          : 3b2bd9f4-1160-43be-8dc9-60d84a85ac95
+    Fetched Entity ID     : ISS-ARC-003
+    Match                 : Γ£à IDs match
+    Result                : Γ£à PASS
+
+  ΓöÇΓöÇ LIST ΓÇö Verify in Module List ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/issues
+    Total Records         : 9
+    Our Record Found      : Γ£à YES
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MODULE: DEPENDENCY
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  ΓöÇΓöÇ POST ΓÇö Create Record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : POST /api/dependencies
+
+    ≡ƒôª Request Payload:
+       {
+         "dependency_title": "E2E Proof: Cloud Infrastructure Migration",
+         "dependency_description": "Application deployment depends on AWS to Azure migration completing before Q3 release deadline",
+         "priority": "High",
+         "type": "Infrastructure",
+         "status": "Open",
+         "account": "Arche Global",
+         "reported_by": "ajaykumar.j@arche.global",
+         "reported_date": "2026-08-04",
+         "contact_person": "cloud-ops@arche.global",
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+    HTTP Status           : 200
+    Result                : Γ£à PASS
+    Record UUID           : 8081a4d5-3936-40ab-ac5d-7a9d9e2e1bc6
+    Entity ID             : DEP-ARC-003
+
+    ≡ƒôª Full API Response (data):
+       {
+         "id": "8081a4d5-3936-40ab-ac5d-7a9d9e2e1bc6",
+         "dependency_id": "DEP-ARC-003",
+         "dependency_title": "E2E Proof: Cloud Infrastructure Migration",
+         "dependency_description": null,
+         "status": "Open",
+         "priority": "High",
+         "project_id": null,
+         "created_by": null,
+         "created_at": "2026-08-04T11:33:44.958Z",
+         "updated_at": "2026-08-04T11:33:44.958Z",
+         "manual_project_id": null,
+         "project_description": null,
+         "account": "Arche Global",
+         "reported_date": "2026-08-03T18:30:00.000Z",
+         "reported_by": "ajaykumar.j@arche.global",
+         "type": "Infrastructure",
+         "dependent_on": null,
+         "impact_if_not_resolved": null,
+         "required_by_date": null,
+         "current_status": null,
+         "follow_up_date": null,
+         "contact_person": "cloud-ops@arche.global",
+         "contact_details": null,
+         "last_updated": "2026-08-04T11:33:44.958Z",
+         "description": null,
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+
+  ΓöÇΓöÇ DATABASE ΓÇö Direct PostgreSQL Query ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Table                 : dependencies
+    Query                 : SELECT * FROM dependencies WHERE id = '8081a4d5-3936-40ab-ac5d-7a9d9e2e1bc6'
+    Rows Found            : 1
+    DB id                 : 8081a4d5-3936-40ab-ac5d-7a9d9e2e1bc6
+    DB dependency_id      : DEP-ARC-003
+    DB status             : Open
+    DB created_at         : 2026-08-04T11:33:44.958Z
+    Result                : Γ£à PASS ΓÇö Record exists in PostgreSQL
+
+  ΓöÇΓöÇ GET ΓÇö Fetch Record by ID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/dependencies/8081a4d5-3936-40ab-ac5d-7a9d9e2e1bc6
+    HTTP Status           : 200
+    Fetched UUID          : 8081a4d5-3936-40ab-ac5d-7a9d9e2e1bc6
+    Fetched Entity ID     : DEP-ARC-003
+    Match                 : Γ£à IDs match
+    Result                : Γ£à PASS
+
+  ΓöÇΓöÇ LIST ΓÇö Verify in Module List ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/dependencies
+    Total Records         : 6
+    Our Record Found      : Γ£à YES
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MODULE: ESCALATION
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  ΓöÇΓöÇ POST ΓÇö Create Record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : POST /api/escalations
+
+    ≡ƒôª Request Payload:
+       {
+         "title": "E2E Proof: Critical Security Vulnerability",
+         "description": "Penetration testing revealed SQL injection vulnerability in the reporting module requiring immediate patching",
+         "priority": "Critical",
+         "category": "Security",
+         "status": "Open",
+         "account": "Arche Global",
+         "escalated_to": "santhosh.b@arche.global",
+         "reported_by": "ajaykumar.j@arche.global",
+         "reported_date": "2026-08-04",
+         "target_resolution_date": "2026-08-10",
+         "impact": "Critical ΓÇö Potential data breach if exploited",
+         "last_updated": "2026-08-04T11:33:44.265Z",
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+    HTTP Status           : 200
+    Result                : Γ£à PASS
+    Record UUID           : d76fa46e-d737-424f-8c02-e7bf49c71942
+    Entity ID             : ESC-ARC-003
+
+    ≡ƒôª Full API Response (data):
+       {
+         "id": "d76fa46e-d737-424f-8c02-e7bf49c71942",
+         "escalation_id": "ESC-ARC-003",
+         "title": "E2E Proof: Critical Security Vulnerability",
+         "description": "Penetration testing revealed SQL injection vulnerability in the reporting module requiring immediate patching",
+         "status": "Open",
+         "priority": "Critical",
+         "project_id": null,
+         "created_by": "838f6bbb-fc89-4200-a34d-aaec9f58576c",
+         "created_at": "2026-08-04T11:33:45.202Z",
+         "updated_at": "2026-08-04T11:33:45.202Z",
+         "manual_project_id": null,
+         "project_description": null,
+         "account": "Arche Global",
+         "last_updated": "2026-08-04T06:03:44.265Z",
+         "reported_date": "2026-08-03T18:30:00.000Z",
+         "reported_by": "ajaykumar.j@arche.global",
+         "category": "Security",
+         "impact": "Critical ΓÇö Potential data breach if exploited",
+         "customer_name": null,
+         "escalated_to": "santhosh.b@arche.global",
+         "target_resolution_date": "2026-08-09T18:30:00.000Z",
+         "actual_resolution_date": null,
+         "resolution_details": null,
+         "root_cause": null,
+         "preventive_actions": null,
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+
+  ΓöÇΓöÇ DATABASE ΓÇö Direct PostgreSQL Query ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Table                 : escalations
+    Query                 : SELECT * FROM escalations WHERE id = 'd76fa46e-d737-424f-8c02-e7bf49c71942'
+    Rows Found            : 1
+    DB id                 : d76fa46e-d737-424f-8c02-e7bf49c71942
+    DB escalation_id      : ESC-ARC-003
+    DB status             : Open
+    DB created_at         : 2026-08-04T11:33:45.202Z
+    Result                : Γ£à PASS ΓÇö Record exists in PostgreSQL
+
+  ΓöÇΓöÇ GET ΓÇö Fetch Record by ID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/escalations/d76fa46e-d737-424f-8c02-e7bf49c71942
+    HTTP Status           : 200
+    Fetched UUID          : d76fa46e-d737-424f-8c02-e7bf49c71942
+    Fetched Entity ID     : ESC-ARC-003
+    Match                 : Γ£à IDs match
+    Result                : Γ£à PASS
+
+  ΓöÇΓöÇ LIST ΓÇö Verify in Module List ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/escalations
+    Total Records         : 4
+    Our Record Found      : Γ£à YES
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MODULE: ACTION
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  ΓöÇΓöÇ POST ΓÇö Create Record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : POST /api/actions
+
+    ≡ƒôª Request Payload:
+       {
+         "action_item": "E2E Proof: Implement Automated CI/CD Pipeline",
+         "priority": "High",
+         "status": "Open",
+         "target_date": "2026-08-25",
+         "responsible": "ajaykumar.j@arche.global",
+         "support_required_from": "DevOps Team",
+         "teams_involved": "Engineering, QA",
+         "remarks": "E2E proof test ΓÇö Set up GitHub Actions + Docker for automated build, test, and deploy pipeline"
+       }
+    HTTP Status           : 200
+    Result                : Γ£à PASS
+    Record UUID           : 1d43efe7-438b-4be2-8b38-b62ac01c2c85
+    Entity ID             : ACT-SIM-003
+
+    ≡ƒôª Full API Response (data):
+       {
+         "id": "1d43efe7-438b-4be2-8b38-b62ac01c2c85",
+         "action_id": "ACT-SIM-003",
+         "action_item": "E2E Proof: Implement Automated CI/CD Pipeline",
+         "priority": "High",
+         "target_date": "2026-08-24T18:30:00.000Z",
+         "status": "Open",
+         "responsible": "ajaykumar.j@arche.global",
+         "support_required_from": "DevOps Team",
+         "teams_involved": "Engineering, QA",
+         "remarks": "E2E proof test ΓÇö Set up GitHub Actions + Docker for automated build, test, and deploy pipeline",
+         "created_at": "2026-08-04T11:33:45.435Z",
+         "updated_at": "2026-08-04T11:33:45.435Z"
+       }
+
+  ΓöÇΓöÇ DATABASE ΓÇö Direct PostgreSQL Query ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Table                 : actions
+    Query                 : SELECT * FROM actions WHERE id = '1d43efe7-438b-4be2-8b38-b62ac01c2c85'
+    Rows Found            : 1
+    DB id                 : 1d43efe7-438b-4be2-8b38-b62ac01c2c85
+    DB action_id          : ACT-SIM-003
+    DB status             : Open
+    DB created_at         : 2026-08-04T11:33:45.435Z
+    Result                : Γ£à PASS ΓÇö Record exists in PostgreSQL
+
+  ΓöÇΓöÇ GET ΓÇö Fetch Record by ID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/actions/1d43efe7-438b-4be2-8b38-b62ac01c2c85
+    HTTP Status           : 200
+    Fetched UUID          : 1d43efe7-438b-4be2-8b38-b62ac01c2c85
+    Fetched Entity ID     : ACT-SIM-003
+    Match                 : Γ£à IDs match
+    Result                : Γ£à PASS
+
+  ΓöÇΓöÇ LIST ΓÇö Verify in Module List ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/actions
+    Total Records         : 7
+    Our Record Found      : Γ£à YES
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  MODULE: APPRECIATION
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  ΓöÇΓöÇ POST ΓÇö Create Record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : POST /api/appreciations
+
+    ≡ƒôª Request Payload:
+       {
+         "subject": "E2E Proof: Exceptional Client Delivery",
+         "details": "Team successfully delivered the Q2 product release 2 weeks ahead of schedule, receiving praise from the client CTO for code quality and zero post-release defects",
+         "appreciation_type": "Client Feedback",
+         "customer_name": "Sarah Johnson - CTO, TechCorp",
+         "customer_contact": "sarah.j@techcorp.com",
+         "received_date": "2026-08-04",
+         "account": "Arche Global",
+         "team_members_recognized": "ajaykumar.j@arche.global,santhosh.b@arche.global",
+         "shared_with_team": "Yes",
+         "follow_up_action": "Feature in monthly newsletter and nominate for quarterly award",
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT"
+       }
+    HTTP Status           : 200
+    Result                : Γ£à PASS
+    Record UUID           : 1a3344e1-1d23-460c-8814-dccc4f1dfc90
+    Entity ID             : APP-ARC-003
+
+    ≡ƒôª Full API Response (data):
+       {
+         "id": "1a3344e1-1d23-460c-8814-dccc4f1dfc90",
+         "appreciation_id": "APP-ARC-003",
+         "customer_name": "Sarah Johnson - CTO, TechCorp",
+         "customer_contact": "sarah.j@techcorp.com",
+         "appreciation_type": "Client Feedback",
+         "subject": "E2E Proof: Exceptional Client Delivery",
+         "details": "Team successfully delivered the Q2 product release 2 weeks ahead of schedule, receiving praise from the client CTO for code quality and zero post-release defects",
+         "received_date": "2026-08-03T18:30:00.000Z",
+         "recorded_by": "ajaykumar.j@arche.global",
+         "project_id": null,
+         "project_name": null,
+         "comments": "E2E proof test ΓÇö created via direct API call with real JWT",
+         "team_members_recognized": "ajaykumar.j@arche.global,santhosh.b@arche.global",
+         "shared_with_team": true,
+         "team_members_count": 2,
+         "created_at": "2026-08-04T11:33:45.658Z",
+         "updated_at": "2026-08-04T11:33:45.658Z",
+         "manual_project_id": null,
+         "project_description": null,
+         "account": "Arche Global",
+         "last_updated": "2026-08-04T11:33:45.658Z",
+         "follow_up_action": "Feature in monthly newsletter and nominate for quarterly award"
+       }
+
+  ΓöÇΓöÇ DATABASE ΓÇö Direct PostgreSQL Query ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Table                 : appreciations
+    Query                 : SELECT * FROM appreciations WHERE id = '1a3344e1-1d23-460c-8814-dccc4f1dfc90'
+    Rows Found            : 1
+    DB id                 : 1a3344e1-1d23-460c-8814-dccc4f1dfc90
+    DB appreciation_id    : APP-ARC-003
+    DB status             : undefined
+    DB created_at         : 2026-08-04T11:33:45.658Z
+    Result                : Γ£à PASS ΓÇö Record exists in PostgreSQL
+
+  ΓöÇΓöÇ GET ΓÇö Fetch Record by ID ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/appreciations/1a3344e1-1d23-460c-8814-dccc4f1dfc90
+    HTTP Status           : 200
+    Fetched UUID          : 1a3344e1-1d23-460c-8814-dccc4f1dfc90
+    Fetched Entity ID     : APP-ARC-003
+    Match                 : Γ£à IDs match
+    Result                : Γ£à PASS
+
+  ΓöÇΓöÇ LIST ΓÇö Verify in Module List ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Endpoint              : GET /api/appreciations
+    Total Records         : 6
+    Our Record Found      : Γ£à YES
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  VP DASHBOARD VERIFICATION
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+    Endpoint              : GET /api/dashboard/metrics
+    HTTP Status           : 200
+
+  ≡ƒôè Dashboard Metrics:
+    Total Items           : 56
+    Open                  : 29
+    On Hold               : 4
+    Resolved              : 2
+    Approved & Closed     : 3
+    Cancelled             : 1
+
+  ≡ƒôï Module Status Table:
+    Module          Open  Submitted  Closed  Hold  Total
+    ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    Risk              10         11       4     5     30
+    Issue              5          0       2     0      7
+    Dependency         5          0       0     0      5
+    Action             5          0       1     0      6
+    Escalation         4          0       0     0      4
+
+  ≡ƒöì Dashboard Visibility per Module:
+    RISK                  : Γ£à Visible ΓÇö Open: 10, Total: 30
+    ISSUE                 : Γ£à Visible ΓÇö Open: 5, Total: 7
+    DEPENDENCY            : Γ£à Visible ΓÇö Open: 5, Total: 5
+    ESCALATION            : Γ£à Visible ΓÇö Open: 4, Total: 4
+    ACTION                : Γ£à Visible ΓÇö Open: 5, Total: 6
+    APPRECIATION          : N/A (Appreciations use separate feed)
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  DATABASE RECORD COUNTS
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+    risks                 : 30 records
+    issues                : 9 records
+    dependencies          : 6 records
+    escalations           : 4 records
+    actions               : 7 records
+    appreciations         : 6 records
+
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  FINAL E2E PROOF REPORT
+ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+
+  Module         Auth   POST   GET    DB     Dashboard  Result 
+  ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  RISK           Γ£à      Γ£à      Γ£à      Γ£à      Γ£à          PASS Γ£à
+  ISSUE          Γ£à      Γ£à      Γ£à      Γ£à      Γ£à          PASS Γ£à
+  DEPENDENCY     Γ£à      Γ£à      Γ£à      Γ£à      Γ£à          PASS Γ£à
+  ESCALATION     Γ£à      Γ£à      Γ£à      Γ£à      Γ£à          PASS Γ£à
+  ACTION         Γ£à      Γ£à      Γ£à      Γ£à      Γ£à          PASS Γ£à
+  APPRECIATION   Γ£à      Γ£à      Γ£à      Γ£à      N/A        PASS Γ£à
+
+  ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+  ≡ƒÅü OVERALL: ALL 6 MODULES PASSED Γ£à
+  ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+

@@ -6,3 +6,7 @@ CREATE TABLE IF NOT EXISTS layout_configs (
     updated_at TIMESTAMP DEFAULT NOW(),
     updated_by VARCHAR(255)
 );
+   
+
+
+   

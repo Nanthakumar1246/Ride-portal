@@ -1,10 +1,7 @@
-
 import { readFileSync, writeFileSync } from 'fs';
 const path = 'c:\\Users\\Santhosh B\\Downloads\\uagpl\\archeride1.0-main\\frontend\\my-react-app\\src\\pages\\MonitoringDashboardPage.jsx';
-
 try {
     let content = readFileSync(path, 'utf8');
-
     // We look for the block containing KpiCards. 
     // Last state should have 5 cards including Total Items.
 
@@ -30,7 +27,6 @@ try {
             console.log(content.substring(idx, idx + 400));
         }
     }
-
 } catch (err) {
     console.error("Error finalizing frontend:", err);
 }

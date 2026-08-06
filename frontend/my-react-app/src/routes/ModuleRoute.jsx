@@ -3,26 +3,29 @@ import React from "react";
 import { useParams, useLocation } from "react-router-dom";
 import WorkboardPage from "../pages/WorkboardPage";
 
-import { fetchRisks, fetchRiskApi, createRiskApi, updateRiskApi } from "../api/risksApi";
-import { fetchIssues, fetchIssueApi, createIssueApi, updateIssueApi } from "../api/issuesApi";
-import { fetchActions, fetchActionApi, createActionApi, updateActionApi } from "../api/actionsApi";
+import { fetchRisks, fetchRiskApi, createRiskApi, updateRiskApi, deleteRisksApi } from "../api/risksApi";
+import { fetchIssues, fetchIssueApi, createIssueApi, updateIssueApi, deleteIssuesApi } from "../api/issuesApi";
+import { fetchActions, fetchActionApi, createActionApi, updateActionApi, deleteActionsApi } from "../api/actionsApi";
 import {
   fetchDependencies,
   fetchDependencyApi,
   createDependencyApi,
   updateDependencyApi,
+  deleteDependenciesApi,
 } from "../api/dependenciesApi";
 import {
   fetchEscalations,
   fetchEscalationApi,
   createEscalationApi,
   updateEscalationApi,
+  deleteEscalationsApi,
 } from "../api/escalationsApi";
 import {
   fetchAppreciations,
   fetchAppreciationApi,
   createAppreciationApi,
   updateAppreciationApi,
+  deleteAppreciationsApi,
 } from "../api/appreciationsApi";
 
 import {
@@ -41,6 +44,7 @@ const moduleMap = {
     fetchItem: fetchRiskApi,
     createItem: createRiskApi,
     updateItem: updateRiskApi,
+    deleteItem: deleteRisksApi,
     formConfig: risksFormConfig,
   },
   issues: {
@@ -49,6 +53,7 @@ const moduleMap = {
     fetchItem: fetchIssueApi,
     createItem: createIssueApi,
     updateItem: updateIssueApi,
+    deleteItem: deleteIssuesApi,
     formConfig: issuesFormConfig,
   },
   actions: {
@@ -57,6 +62,7 @@ const moduleMap = {
     fetchItem: fetchActionApi,
     createItem: createActionApi,
     updateItem: updateActionApi,
+    deleteItem: deleteActionsApi,
     formConfig: actionsFormConfig,
   },
   dependencies: {
@@ -65,6 +71,7 @@ const moduleMap = {
     fetchItem: fetchDependencyApi,
     createItem: createDependencyApi,
     updateItem: updateDependencyApi,
+    deleteItem: deleteDependenciesApi,
     formConfig: dependenciesFormConfig,
   },
   escalations: {
@@ -73,6 +80,7 @@ const moduleMap = {
     fetchItem: fetchEscalationApi,
     createItem: createEscalationApi,
     updateItem: updateEscalationApi,
+    deleteItem: deleteEscalationsApi,
     formConfig: escalationsFormConfig,
   },
   appreciations: {
@@ -81,6 +89,7 @@ const moduleMap = {
     fetchItem: fetchAppreciationApi,
     createItem: createAppreciationApi,
     updateItem: updateAppreciationApi,
+    deleteItem: deleteAppreciationsApi,
     formConfig: appreciationsFormConfig,
   },
 };
@@ -105,6 +114,7 @@ const ModuleRoute = () => {
       createItem={mode === "edit" ? cfg.createItem : null}
       
       updateItem={cfg.updateItem}
+      deleteItem={cfg.deleteItem}
       formConfig={cfg.formConfig}
     />
   );

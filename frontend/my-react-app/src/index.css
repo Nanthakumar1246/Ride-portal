@@ -111,6 +111,32 @@ code {
   animation-delay: 0.45s;
 }
 
+@keyframes slideUpFade {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  opacity: 0;
+  animation: slideUpFade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes scaleInFade {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  opacity: 0;
+  animation: scaleInFade 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
 
 
 @keyframes ctaSwapOnce {
@@ -383,34 +409,6 @@ code {
 }
 
 
-.ceremony-two-col {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 4rem;
-  align-items: center;
-}
-
-.bullet-square {
-  list-style-type: none;
-}
-
-.bullet-square li::before {
-  content: "▪";
-  color: #fff;
-  display: inline-block;
-  width: 1.5em;
-  margin-left: -1.5em;
-}
-
-.text-muted-p3 {
-  color: rgba(255, 255, 255, 0.4);
-}
-
-.text-bright-p3 {
-  color: #fff;
-  transition: color 1s ease;
-}
-
 
 @media (max-width: 640px) {
   header>div:first-child {
@@ -492,5 +490,146 @@ code {
   100% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+
+/* ============================================================
+   RESPONSIVE DESIGN — Global Breakpoints for RIDE+
+   ============================================================ */
+
+/* --- Monitoring / Workboard Tables: always horizontally scrollable --- */
+.monitoring-table-wrapper,
+.workboard-view {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.monitoring-table,
+.workboard-table {
+  min-width: 700px;
+}
+
+/* --- Dashboard KPI grid: 2 cols on tablet, 1 col on phone --- */
+@media (max-width: 640px) {
+  /* Header compact on phones */
+  header {
+    padding: 8px 12px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Hide clock on very small screens */
+  .border-l.pl-4.h-8 {
+    display: none;
+  }
+
+  /* Dashboard padding */
+  .min-h-screen.bg-gray-50\/30 {
+    padding: 12px !important;
+    gap: 16px !important;
+  }
+
+  /* Stack KPI grid to 2 columns on phone */
+  .grid.grid-cols-2.md\:grid-cols-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  /* Priority breakdown inline-grid */
+  .grid.grid-cols-2.md\:grid-cols-4.gap-4 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* Tables in latest risks/issues panels: scroll */
+  .max-h-\[400px\].overflow-auto {
+    overflow-x: auto;
+  }
+
+  /* Monitoring page header title */
+  .monitoring-title {
+    font-size: 15px !important;
+  }
+
+  /* Status legend wraps */
+  .status-legend {
+    gap: 10px;
+    font-size: 11px;
+  }
+
+  /* Modal full screen on phones */
+  .fixed.inset-0.z-\[60\] .relative.bg-white.rounded-xl {
+    border-radius: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+    height: 100% !important;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 1024px) {
+  /* Sidebar: collapse to overlay on tablets */
+  aside {
+    width: 260px !important;
+  }
+
+  /* Monitoring filters: wrap */
+  .monitoring-filters-row {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  /* Workboard form: single column on tablets */
+  .workboard-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Dashboard: xl-col-span-2 grid col falls back to full */
+  .xl\:col-span-2 {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1023px) {
+  /* On tablets: stack the top row (KPIs + Donut) vertically */
+  .flex.flex-col.lg\:flex-row.gap-6 {
+    flex-direction: column !important;
+  }
+
+  /* Donut chart gets full width on tablet */
+  .flex-1.min-h-\[450px\] {
+    min-height: 320px;
+  }
+}
+
+/* --- Ensure monitoring page content scrolls, not the whole page --- */
+main {
+  overflow-x: hidden;
+}
+
+/* --- All tables: always wrap headers with word-break --- */
+table th {
+  white-space: normal;
+  word-break: break-word;
+}
+
+/* --- Workboard page: minimum table width on scroll --- */
+.workboard-table {
+  min-width: 900px;
+}
+
+/* --- Filters bar on Monitoring pages --- */
+@media (max-width: 768px) {
+  .filters-bar,
+  .monitoring-filters {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .filters-bar select,
+  .filters-bar input,
+  .monitoring-filters select,
+  .monitoring-filters input {
+    width: 100% !important;
   }
 }

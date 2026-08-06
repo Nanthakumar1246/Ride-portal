@@ -63,3 +63,21 @@ export async function resetPasswordExpiredApi(email, oldPassword, newPassword) {
 
     return handleResponse(res);
 }
+
+export async function forgotPasswordOtpApi(email) {
+    const res = await fetch(`${BASE_URL}/auth/forgot-password-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+    });
+    return handleResponse(res);
+}
+
+export async function resetPasswordOtpApi(email, otp, newPassword) {
+    const res = await fetch(`${BASE_URL}/auth/reset-password-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, otp, newPassword }),
+    });
+    return handleResponse(res);
+}

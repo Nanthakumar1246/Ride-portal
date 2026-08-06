@@ -43,10 +43,11 @@ export default function KpiCard({ title, value }) {
       style={{
         background: "#fff",
         borderRadius: 16,
-        padding: "24px",
+        padding: "16px",
         border: "1px solid #E1E6EB",
         display: "flex",
         flex: 1,
+        minWidth: 0,
         flexDirection: "column",
         alignItems: "flex-start",
         justifyContent: "flex-start",
@@ -82,7 +83,7 @@ export default function KpiCard({ title, value }) {
         animate={{ scale: 1, opacity: 1 }}
         transition={{ duration: 0.3 }}
         style={{
-          fontSize: 48,
+          fontSize: "clamp(28px, 5vw, 48px)",
           fontFamily: "Lato, sans-serif",
           fontWeight: 800,
           color: "#0B2341",

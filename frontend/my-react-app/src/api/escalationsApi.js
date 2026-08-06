@@ -88,3 +88,16 @@ export async function resolveEscalationApi(id, formData) {
   });
   return handleResponse(res);
 }
+
+export async function deleteEscalationsApi(payload) {
+  const res = await fetch(`${BASE_URL}/escalations/delete-multiple`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res);
+}
+

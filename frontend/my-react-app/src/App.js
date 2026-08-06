@@ -21,44 +21,32 @@ import MonitoringDependenciesPage from "./pages/MonitoringDependenciesPage";
 import MonitoringActionsPage from "./pages/MonitoringActionsPage";
 import MonitoringAppreciationsPage from "./pages/MonitoringAppreciationsPage";
 import MonitoringEscalationsPage from "./pages/MonitoringEscalationsPage";
+import CommandCenterPage from "./pages/CommandCenterPage";
+import ProjectMasterPage from "./pages/ProjectMasterPage";
 import ModuleRoute from "./routes/ModuleRoute";
 
 import MonitoringNotificationsPage from "./pages/MonitoringNotificationsPage";
 import UsersMonitoringPage from "./pages/UsersMonitoringPage";
 import { AuthProvider } from "./context/AuthContext";
 import MainLayout from "./layouts/MainLayout";
-import CeremonyLaunchPage from "./pages/CeremonyLaunchPage";
-import CeremonyRibbonPage from "./pages/CeremonyRibbonPage";
-import FinalCeremonyPage from "./pages/FinalCeremonyPage";
+import { FilterProvider } from "./context/FilterContext";
+import ManagersAdminPage from "./pages/ManagersAdminPage";
+import GuidePage from "./pages/GuidePage";
+
+
 
 function App() {
-  const audioRef = React.useRef(null);
-
-  React.useEffect(() => {
-    window.playCeremonyAudio = () => {
-      if (audioRef.current) {
-        audioRef.current.play().catch(e => console.error("Audio error", e));
-      }
-    };
-    window.stopCeremonyAudio = () => {
-      if (audioRef.current) {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-      }
-    };
-  }, []);
 
   return (
     <AuthProvider>
-      <audio ref={audioRef} src="/assets/Awards_Ceremony_Grand_Opening.mp3" preload="auto" />
+      <FilterProvider>
+
       <Router>
         <Routes>
           {}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/landing" element={<LandingPage />} />
-          <Route path="/ceremony" element={<CeremonyLaunchPage />} />
-          <Route path="/ceremony/ribbon" element={<CeremonyRibbonPage />} />
-          <Route path="/ceremony/final" element={<FinalCeremonyPage />} />
+
 
           <Route path="/issues" element={<IssuesPage />} />
           <Route path="/actions" element={<ActionsPage />} />
@@ -88,9 +76,30 @@ function App() {
             }
           />
           <Route
-            path="/monitoring/risks"
+            path="/monitoring/command-center"
             element={
               <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <MainLayout>
+                  <CommandCenterPage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/monitoring/project-master"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <MainLayout>
+                  <ProjectMasterPage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/monitoring/risks"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringRisksPage />
                 </MainLayout>
@@ -100,7 +109,7 @@ function App() {
           <Route
             path="/monitoring/issues"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringIssuesPage />
                 </MainLayout>
@@ -110,7 +119,7 @@ function App() {
           <Route
             path="/monitoring/dependencies"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringDependenciesPage />
                 </MainLayout>
@@ -120,7 +129,7 @@ function App() {
           <Route
             path="/monitoring/escalations"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringEscalationsPage />
                 </MainLayout>
@@ -130,7 +139,7 @@ function App() {
           <Route
             path="/monitoring/actions"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringActionsPage />
                 </MainLayout>
@@ -140,13 +149,21 @@ function App() {
           <Route
             path="/monitoring/appreciations"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringAppreciationsPage />
                 </MainLayout>
               </ProtectedRoute>
             }
           />
+          {/* /modules/* aliases to the same Monitoring components — PM/BM's data is
+              already scoped server-side, so this is the identical UI with scoped data. */}
+          <Route path="/modules/risks" element={<Navigate to="/monitoring/risks" replace />} />
+          <Route path="/modules/issues" element={<Navigate to="/monitoring/issues" replace />} />
+          <Route path="/modules/dependencies" element={<Navigate to="/monitoring/dependencies" replace />} />
+          <Route path="/modules/escalations" element={<Navigate to="/monitoring/escalations" replace />} />
+          <Route path="/modules/actions" element={<Navigate to="/monitoring/actions" replace />} />
+          <Route path="/modules/appreciations" element={<Navigate to="/monitoring/appreciations" replace />} />
           <Route
             path="/monitoring/notifications"
             element={
@@ -167,12 +184,32 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/monitoring/managers"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN"]}>
+                <MainLayout>
+                  <ManagersAdminPage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/guide"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <GuidePage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
 
           {}
           <Route
             path="/modules/:moduleKey"
             element={
-              <ProtectedRoute allowedRoles={["BM", "PM"]}>
+              <ProtectedRoute allowedRoles={["BM", "PM", "ADMIN"]}>
                 <MainLayout>
                   <ModuleRoute />
                 </MainLayout>
@@ -196,6 +233,7 @@ function App() {
           <Route path="*" element={<Navigate to="/login" replace />} />
         </Routes>
       </Router>
+      </FilterProvider>
     </AuthProvider>
   );
 }

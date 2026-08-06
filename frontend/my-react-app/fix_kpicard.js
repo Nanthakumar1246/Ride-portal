@@ -1,7 +1,5 @@
-
 import { readFileSync, writeFileSync } from 'fs';
 const path = 'c:\\Users\\Santhosh B\\Downloads\\uagpl\\archeride1.0-main\\frontend\\my-react-app\\src\\components\\KpiCard.jsx';
-
 try {
     let content = readFileSync(path, 'utf8');
 

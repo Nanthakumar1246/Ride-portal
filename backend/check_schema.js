@@ -1,12 +1,20 @@
-import pool from './db.js';
+import pool from "./db.js";
 
-async function run() {
-  const res = await pool.query(`
-    SELECT column_name, is_nullable
-    FROM information_schema.columns
-    WHERE table_name = 'risks' AND column_name = 'project_id'
-  `);
-  console.log(res.rows);
-  pool.end();
+async function checkSchema() {
+  try {
+    const res = await pool.query(`
+      SELECT column_name, data_type 
+      FROM information_schema.columns 
+      WHERE table_name = 'projects'
+    `);
+    res.rows.forEach(row => {
+      console.log(`${row.column_name}: ${row.data_type}`);
+    });
+    process.exit(0);
+  } catch (err) {
+    console.error(err);
+    process.exit(1);
+  }
 }
-run();
+
+checkSchema();

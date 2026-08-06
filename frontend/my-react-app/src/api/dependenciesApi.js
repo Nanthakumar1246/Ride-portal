@@ -81,3 +81,16 @@ export async function decideDependencyNotification(
   );
   return handleResponse(res);
 }
+
+export async function deleteDependenciesApi(payload) {
+  const res = await fetch(`${BASE_URL}/dependencies/delete-multiple`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res);
+}
+

@@ -26,3 +26,12 @@ export const saveLayoutApi = async (moduleName, config) => {
     );
     return res.data;
 };
+
+export const deleteLayoutApi = async (moduleName) => {
+    const res = await axios.post(
+        `${BASE_URL}/layout/${moduleName}/reset`,
+        {},
+        { headers: getAuthHeaders() }
+    );
+    return res.data;
+};

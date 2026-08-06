@@ -1,4 +1,5 @@
 import express, { json } from "express";
+import pool from "./db.js";
 import cors from "cors";
 import helmet from "helmet";
 import { config } from "dotenv";
@@ -19,6 +20,11 @@ import feedRoutes from "./routes/feed.routes.js";
 import userRoutes from "./routes/users.routes.js";
 import layoutRoutes from "./routes/layout.routes.js";
 import utilsRoutes from "./routes/utils.routes.js";
+import managersRoutes from "./routes/managers.routes.js";
+import searchRoutes from "./routes/search.routes.js";
+import moduleHistoryRoutes from "./routes/moduleHistory.routes.js";
+import appNotificationsRoutes from "./routes/appNotifications.routes.js";
+import { startReminderScheduler } from "./scheduler/reminder_scheduler.js";
 
 config();
 
@@ -70,7 +76,7 @@ app.use((req, res, next) => {
 });
 
 app.use(cors({
-    origin: ["https://ride.arche.global", "http://localhost:3000", "http://localhost:5173"],
+    origin: ["https://ride.arche.global", "http://localhost:3000", "http://localhost:3001", "http://localhost:5173"],
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
     credentials: true
@@ -108,6 +114,10 @@ app.use("/api/projects", projectRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/layout", layoutRoutes);
 app.use("/api/utils", utilsRoutes);
+app.use("/api/managers", managersRoutes);
+app.use("/api/search", searchRoutes);
+app.use("/api/module-history", moduleHistoryRoutes);
+app.use("/api/app-notifications", appNotificationsRoutes);
 
 
 app.use("/api/*", (req, res) => {
@@ -123,6 +133,44 @@ app.use((err, req, res, next) => {
     });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`Server listening on port ${PORT} `);
+    try {
+        await pool.query(`
+            ALTER TABLE users 
+            ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20),
+            ADD COLUMN IF NOT EXISTS reset_otp VARCHAR(10),
+            ADD COLUMN IF NOT EXISTS reset_otp_expires_at TIMESTAMP
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS risk_history (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                risk_id VARCHAR(100) NOT NULL,
+                updated_by VARCHAR(255),
+                old_status VARCHAR(100),
+                new_status VARCHAR(100),
+                remarks TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS email_audit_log (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                module VARCHAR(50) NOT NULL,
+                record_id VARCHAR(100) NOT NULL,
+                event_type VARCHAR(100) NOT NULL,
+                recipient VARCHAR(255) NOT NULL,
+                sender VARCHAR(255) NOT NULL,
+                subject VARCHAR(500) NOT NULL,
+                status VARCHAR(50) NOT NULL,
+                error_message TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            );
+        `);
+        console.log("Auto-Migration: Ensure OTP columns, risk_history, and email_audit_log tables exist.");
+        
+        startReminderScheduler();
+    } catch (err) {
+        console.error("Auto-Migration failed:", err);
+    }
 });

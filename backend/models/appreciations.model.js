@@ -28,6 +28,9 @@ export async function findAppreciations({ whereSql = "", params = [] } = {}) {
       a.shared_with_team,
       a.follow_up_action,
       a.comments,
+      a.project_manager,
+      a.program_manager,
+      a.behalf_of,
       a.created_at,
       a.updated_at
     FROM appreciations a
@@ -40,6 +43,7 @@ export async function findAppreciations({ whereSql = "", params = [] } = {}) {
 
 
 export async function findAppreciationById(id) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
   const sql = `
     SELECT
       a.id,
@@ -64,10 +68,13 @@ export async function findAppreciationById(id) {
       a.shared_with_team,
       a.follow_up_action,
       a.comments,
+      a.project_manager,
+      a.program_manager,
+      a.behalf_of,
       a.created_at,
       a.updated_at
     FROM appreciations a
-    WHERE a.id = $1
+    WHERE ${isUuid ? "a.id" : "a.appreciation_id"} = $1
   `;
   const { rows } = await pool.query(sql, [id]);
   return rows[0];
@@ -93,7 +100,10 @@ export async function createAppreciation(data) {
   shared_with_team,
   follow_up_action,
   last_updated,
-  comments
+  comments,
+  project_manager,
+  program_manager,
+  behalf_of
 ) VALUES (
   $1::text,
   $16::text,
@@ -111,7 +121,10 @@ export async function createAppreciation(data) {
   $13::boolean,
   $14::text,
   now(),
-  $15::text
+  $15::text,
+  $17::text,
+  $18::text,
+  $19::text
 )
 RETURNING *,
   CASE
@@ -138,7 +151,10 @@ RETURNING *,
     data.shared_with_team === 'Yes' || data.shared_with_team === true,
     data.follow_up_action || null,
     data.comments || null,
-    data.manual_project_id 
+    data.manual_project_id,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -171,6 +187,9 @@ export async function updateAppreciation(id, data) {
       follow_up_action = $14::text,
       last_updated = now(),
       comments = $15::text,
+      project_manager = $18::text,
+      program_manager = $19::text,
+      behalf_of = $20::text,
       updated_at = now()
     WHERE id = $17::uuid
     RETURNING *;
@@ -192,8 +211,11 @@ export async function updateAppreciation(id, data) {
     data.shared_with_team === 'Yes' || data.shared_with_team === true,
     data.follow_up_action || null,
     data.comments || null,
-    data.manual_project_id, 
-    id 
+    data.manual_project_id,
+    id,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -206,4 +228,18 @@ export async function countAll() {
     "SELECT COUNT(*) AS c FROM appreciations"
   );
   return Number(rows[0].c);
+}
+
+export async function findAppreciationsByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const sql = `SELECT * FROM appreciations WHERE id = ANY($1::uuid[])`;
+  const { rows } = await pool.query(sql, [ids]);
+  return rows;
+}
+
+export async function deleteMultipleAppreciations(ids) {
+  if (!ids || ids.length === 0) return 0;
+  const sql = `DELETE FROM appreciations WHERE id = ANY($1::uuid[]) RETURNING *`;
+  const { rowCount } = await pool.query(sql, [ids]);
+  return rowCount;
 }

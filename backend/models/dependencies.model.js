@@ -30,6 +30,9 @@ export async function findDependencies({ whereSql = "", params = [] } = {}) {
       d.contact_details,
       d.last_updated,
       d.comments,
+      d.project_manager,
+      d.program_manager,
+      d.behalf_of,
       d.reported_by as created_by,
       d.created_at,
       d.updated_at
@@ -44,10 +47,12 @@ export async function findDependencies({ whereSql = "", params = [] } = {}) {
 
 
 export async function findDependencyById(id) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const col = isUuid ? "d.id" : "d.dependency_id";
   const sql = `
     SELECT d.*
     FROM dependencies d
-    WHERE d.id = $1
+    WHERE ${col} = $1
   `;
   const { rows } = await pool.query(sql, [id]);
   return rows[0];
@@ -76,10 +81,13 @@ export async function createDependency(data) {
       contact_person,
       contact_details,
       last_updated,
-      comments
+      comments,
+      project_manager,
+      program_manager,
+      behalf_of
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,
-      $10,$11,$12,$13,$14,$15,$16,$17,$18,now(),$19
+      $10,$11,$12,$13,$14,$15,$16,$17,$18,now(),$19,$20,$21,$22
     )
     RETURNING *;
   `;
@@ -103,7 +111,10 @@ export async function createDependency(data) {
     data.follow_up_date || null,
     data.contact_person || null,
     data.contact_details || null,
-    data.comments || null
+    data.comments || null,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -134,6 +145,9 @@ export async function updateDependency(id, data) {
       contact_details = $17,
       last_updated = now(),
       comments = $18,
+      project_manager = $21,
+      program_manager = $22,
+      behalf_of = $23,
       updated_at = now()
     WHERE id = $19
     RETURNING *;
@@ -159,7 +173,10 @@ export async function updateDependency(id, data) {
     data.contact_details || null,
     data.comments || null,
     id,
-    data.manual_project_id 
+    data.manual_project_id,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -176,3 +193,18 @@ export async function countAll() {
   const result = await pool.query("SELECT COUNT(*) AS c FROM dependencies");
   return Number(result.rows[0].c);
 }
+
+export async function findDependenciesByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const sql = `SELECT * FROM dependencies WHERE id = ANY($1::uuid[])`;
+  const { rows } = await pool.query(sql, [ids]);
+  return rows;
+}
+
+export async function deleteMultipleDependencies(ids) {
+  if (!ids || ids.length === 0) return 0;
+  const sql = `DELETE FROM dependencies WHERE id = ANY($1::uuid[]) RETURNING *`;
+  const { rowCount } = await pool.query(sql, [ids]);
+  return rowCount;
+}
+

@@ -146,3 +146,33 @@ body {
   padding: 16px;
   overflow: auto;
 }
+
+/* Responsive overrides */
+@media (max-width: 1024px) {
+  .app-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+  }
+
+  .app-sidebar {
+    border-right: none;
+    border-bottom: 1px solid var(--border-soft);
+    padding: 10px 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-root {
+    grid-template-rows: auto 1fr;
+  }
+
+  .app-header {
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 8px;
+  }
+
+  .app-header-right {
+    gap: 8px;
+  }
+}

@@ -1,16 +1,12 @@
 const fs = require('fs');
 const path = require('path');
-
 const filePath = path.join(__dirname, 'frontend', 'my-react-app', 'src', 'pages', 'MonitoringEscalationsPage.jsx');
 let content = fs.readFileSync(filePath, 'utf8');
-
 // The file might contain literal "\n" characters from my previous mistake, 
 // or just have garbage at the end.
 // Let's first fix the garbage at the end.
-
 const dataToCheck = "export default MonitoringEscalationsPage;";
 const lastIndex = content.lastIndexOf(dataToCheck);
-
 if (lastIndex !== -1) {
     // Keep everything up to the export statement, plus a newline
     const newContent = content.substring(0, lastIndex + dataToCheck.length) + '\r\n';

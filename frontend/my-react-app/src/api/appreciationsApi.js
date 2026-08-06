@@ -46,3 +46,29 @@ export async function updateAppreciationApi(id, payload) {
   });
   return handleResponse(res);
 }
+
+export async function uploadAppreciationAttachmentApi(id, file) {
+  const formData = new FormData();
+  formData.append("attachment", file);
+  const res = await fetch(`${BASE_URL}/appreciations/${id}/attachment`, {
+    method: "POST",
+    headers: {
+      ...authHeaders(),
+    },
+    body: formData,
+  });
+  return handleResponse(res);
+}
+
+export async function deleteAppreciationsApi(payload) {
+  const res = await fetch(`${BASE_URL}/appreciations/delete-multiple`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res);
+}
+

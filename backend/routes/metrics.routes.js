@@ -2,7 +2,7 @@
 import express from "express";
 
 import { Router } from "express";
-import { getSummaryMetrics, getPrioritySplit } from "../controllers/metrics.controller.js";
+import { getSummaryMetrics, getPrioritySplit, getNearingTat } from "../controllers/metrics.controller.js";
 import {
   countAll as countRisks,
   countByStatus as countRisksByStatus,
@@ -63,5 +63,6 @@ router.get("/summary", async (req, res) => {
 });
 router.get("/summary", getSummaryMetrics);
 router.get("/priority-split", getPrioritySplit);
+router.get("/nearing-tat", getNearingTat);
 
 export default router;

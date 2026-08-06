@@ -78,7 +78,7 @@ const GlobalPriorityDonut = ({ onPrioritySelect, selectedPriority, data: externa
 
     return (
         <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 flex flex-col h-full justify-center">
-            <div className="w-full min-h-[220px] flex flex-row items-center justify-center">
+        <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-4 sm:gap-0 min-h-[200px]">
                 {loading ? (
                     <div className="flex flex-col items-center justify-center space-y-2">
                         <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
@@ -95,7 +95,7 @@ const GlobalPriorityDonut = ({ onPrioritySelect, selectedPriority, data: externa
                 ) : (
                     <>
                         { }
-                        <div className="w-1/2 h-[220px] relative">
+                        <div className="w-full sm:w-1/2 h-[200px] sm:h-[220px] relative">
                             <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                                 <PieChart>
                                     <Pie
@@ -151,7 +151,7 @@ const GlobalPriorityDonut = ({ onPrioritySelect, selectedPriority, data: externa
                         </div>
 
                         { }
-                        <div className="w-1/2 pl-4 flex flex-col justify-center space-y-2">
+                        <div className="w-full sm:w-1/2 sm:pl-4 flex flex-col justify-center space-y-2">
                             {chartData.map((item, idx) => {
                                 const isSelected = selectedPriority === item.priority;
                                 return (

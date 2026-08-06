@@ -71,3 +71,29 @@ export async function decideActionNotification(notificationId, decision, comment
   });
   return handleResponse(res);
 }
+
+export async function deleteActionsApi(payload) {
+  const res = await fetch(`${BASE_URL}/actions/delete-multiple`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify(payload),
+  });
+  return handleResponse(res);
+}
+
+export async function bulkUploadActionsApi(actions) {
+  const payload = actions.map(sanitizeStatus);
+  const res = await fetch(`${BASE_URL}/actions/bulk`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ actions: payload }),
+  });
+  return handleResponse(res);
+}
+

@@ -4,15 +4,18 @@ import {
   findActionById,
   createAction as createActionModel,
   updateAction as updateActionModel,
+  findActionsByIds,
+  deleteMultipleActions,
+  findActions,
+  bulkUpsertActions
 } from "../models/actions.model.js";
 
 import { buildActionFilters, applyRoleRestrictions } from "../utils/filters.utils.js";
-import { getAssignedProjects } from "../models/users.model.js";
+import { isValidBehalfOf } from "../utils/validation.utils.js";
 import { sendSuccess, sendError } from "../utils/response.utils.js";
-import {
-  createResolutionNotification,
-  decideNotification,
-} from "../models/notifications.model.js";
+import { sendGovernanceEventMail } from "../utils/email.utils.js";
+import { notifyRecordEvent } from "../utils/notify.utils.js";
+import { createModuleHistory } from "../models/moduleHistory.model.js";
 
 export async function listActions(req, res) {
   try {
@@ -22,10 +25,25 @@ export async function listActions(req, res) {
 
     const { whereSql, params } = filters;
     const sql = `
-      SELECT a.*
+      SELECT 
+        id,
+        action_id,
+        action_title AS action_item,
+        priority,
+        due_date AS target_date,
+        status,
+        action_owner AS responsible,
+        dependencies AS support_required_from,
+        related_to_type AS teams_involved,
+        comments AS remarks,
+        project_manager,
+        program_manager,
+        behalf_of,
+        created_at,
+        updated_at
       FROM actions a
       ${whereSql || ""}
-      ORDER BY a.created_at DESC NULLS LAST, a.last_updated DESC NULLS LAST
+      ORDER BY a.created_at DESC
     `;
 
     const { rows } = await pool.query(sql, params);
@@ -43,15 +61,9 @@ export async function getAction(req, res) {
     if (!action) {
       return sendError(res, 404, "Action not found");
     }
-
-    if (req.user.role !== "ADMIN") {
-      const assigned = await getAssignedProjects(req.user.id);
-      const projectIds = assigned.map(p => p.id);
-      if (!projectIds.includes(action.project_id)) {
-        return sendError(res, 403, "Forbidden: Not assigned to this project");
-      }
+    if (req.user.role === "PM" && action.project_manager !== req.user.name) {
+      return sendError(res, 403, "Forbidden: Not assigned to this record");
     }
-
     return sendSuccess(res, action);
   } catch (err) {
     console.error("Error getting action", err);
@@ -61,34 +73,36 @@ export async function getAction(req, res) {
 
 export async function createActionHandler(req, res) {
   try {
-    if (!req.body.action_id || req.body.action_id.trim() === "") {
-      const { generateEntityId } = await import("../utils/idGenerator.js");
-      req.body.action_id = await generateEntityId(
-        req.user.email,
-        req.body.account || "Default",
-        "action"
-      );
+    if (!isValidBehalfOf(req.body.behalf_of)) {
+      return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
     }
+    const { generateEntityId } = await import("../utils/idGenerator.js");
+    
+    const action_id = req.body.action_id || await generateEntityId(
+      req.user.email,
+      "Simplified",
+      "action"
+    );
 
     const payload = {
       ...req.body,
+      action_id,
       created_by: req.user.email,
     };
 
-    
-    ["project_id", "project_description", "account", "priority", "category"].forEach(f => {
-      if (payload[f] === undefined) payload[f] = null;
-    });
-
-    
-    if (payload.completion_percent) {
-      const parsed = parseFloat(payload.completion_percent);
-      payload.completion_percent = isNaN(parsed) ? null : parsed;
-    } else {
-      payload.completion_percent = null;
-    }
-
     const created = await createActionModel(payload);
+
+    try {
+      await sendGovernanceEventMail({
+        module: "action",
+        recordId: created.action_id || action_id,
+        eventType: "ACTION_ASSIGNED",
+        recordData: created,
+        currentUserEmail: req.user.email
+      });
+    } catch (eErr) {
+      console.error("[Action Email Error]", eErr.message);
+    }
 
     return sendSuccess(res, created, 201);
   } catch (err) {
@@ -102,44 +116,52 @@ export async function updateActionHandler(req, res) {
     const { id } = req.params;
     const payload = req.body;
 
+    if (!isValidBehalfOf(payload.behalf_of)) {
+      return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
+    }
+
     const existing = await findActionById(id);
     if (!existing) return sendError(res, 404, "Action not found");
-
-    
 
     const oldStatus = existing.status;
     const newStatus = payload.status;
 
-    
-    if (payload.completion_percent !== undefined) {
-      const parsed = parseFloat(payload.completion_percent);
-      payload.completion_percent = isNaN(parsed) ? null : parsed;
+    const updated = await updateActionModel(id, payload);
+
+    if (payload.remarks || (newStatus && oldStatus !== newStatus)) {
+      try {
+        await createModuleHistory({
+          module: "actions",
+          record_id: existing.action_id || existing.id,
+          updated_by: req.user?.email,
+          old_status: oldStatus,
+          new_status: newStatus,
+          remarks: payload.remarks || payload.comments,
+        });
+      } catch (hErr) {
+        console.error("Failed to save action history entry:", hErr);
+      }
     }
 
-    const updated = await updateActionModel(id, payload);
-    if (!updated) return sendError(res, 404, "Action not found");
-
-    const normalize = (s) => s?.trim().toLowerCase();
-    const becameResolved =
-      normalize(oldStatus) !== "resolved" &&
-      normalize(newStatus) === "resolved";
-
-    if (becameResolved && req.user?.email) {
-      await createResolutionNotification({
-        module: "action",
-        itemId: updated.id,
-        itemCode: updated.action_id,
-        statusBefore: oldStatus,
-        statusAfter: newStatus,
-        payload: {
-          account: existing.account, project_id: existing.project_id,
-          priority: updated.priority,
-          related_to_type: updated.related_to_type,
-          action_title: updated.action_title,
-          created_date: updated.created_date,
-        },
-        bmUser: req.user.email,
-      });
+    if (newStatus && oldStatus !== newStatus) {
+      try {
+        await notifyRecordEvent({
+          module: "action",
+          recordId: existing.action_id || updated.action_id,
+          eventType: "STATUS_CHANGED",
+          recordData: {
+            ...updated,
+            statusBefore: oldStatus,
+            statusAfter: newStatus,
+            remarks: payload.remarks || payload.comments
+          },
+          currentUserEmail: req.user?.email,
+          title: `Status changed: ${existing.action_id || updated.action_id}`,
+          message: `${oldStatus} → ${newStatus}`
+        });
+      } catch (eErr) {
+        console.error("[Action Status Email Error]", eErr.message);
+      }
     }
 
     return sendSuccess(res, updated);
@@ -149,26 +171,41 @@ export async function updateActionHandler(req, res) {
   }
 }
 
-export async function decideActionResolution(req, res) {
+export const deleteActionsHandler = async (req, res) => {
   try {
-    const { notificationId } = req.params;
-    const { decision, comment } = req.body;
-    const adminUser = req.user?.email || null;
-
-    if (!decision) {
-      return sendError(res, 400, "Decision required");
+    const { ids } = req.body;
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return sendError(res, 400, "No ids provided for deletion.");
     }
 
-    const decided = await decideNotification({
-      id: notificationId,
-      adminUser,
-      decision,
-      comment,
-    });
-
-    return sendSuccess(res, decided);
-  } catch (err) {
-    console.error("Action decision failed", err);
-    return sendError(res, 500, "Failed to process decision");
+    const deletedCount = await deleteMultipleActions(ids);
+    res.json({ message: `Successfully deleted ${deletedCount} entries.` });
+  } catch (error) {
+    console.error("deleteActionsHandler error:", error);
+    sendError(res, 500, "Internal Server Error");
   }
-}
+};
+
+export const bulkUploadActionsHandler = async (req, res) => {
+  try {
+    const { actions } = req.body;
+    if (!actions || !Array.isArray(actions) || actions.length === 0) {
+      return sendError(res, 400, "No actions provided for bulk upload.");
+    }
+
+    const { generateEntityId } = await import("../utils/idGenerator.js");
+    
+    // Assign missing action_ids
+    for (const a of actions) {
+       if (!a.action_id) {
+           a.action_id = await generateEntityId(req.user.email, "Simplified", "action");
+       }
+    }
+
+    const results = await bulkUpsertActions(actions, req.user.email);
+    res.status(201).json({ message: `Successfully processed ${results.length} actions.`, data: results });
+  } catch (error) {
+    console.error("bulkUploadActionsHandler error:", error);
+    sendError(res, 500, "Internal Server Error during bulk upload");
+  }
+};

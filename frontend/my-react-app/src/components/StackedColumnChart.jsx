@@ -1,13 +1,14 @@
 
 import React, { useMemo } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 
 const STATUS_ORDER = ["Open", "In Progress", "Resolved", "Cancelled", "Approved & Closed"];
 
 const COLORS = {
   Open: "#E63946",
+  "On Hold": "#8B5CF6",
   "In Progress": "#FB8500",
   Resolved: "#457B9D",
   Cancelled: "#8D99AE",
@@ -47,39 +48,41 @@ export default function StackedColumnChart({ data = [] }) {
   }
 
   return (
-    <div style={{ width: "100%", height: 480, display: "flex", flexDirection: "column" }}>
+    <div style={{ width: "100%", height: "100%", minHeight: 0, display: "flex", flexDirection: "column" }}>
       <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
         <BarChart
           data={sortedData}
-          margin={{ top: 20, right: 40, left: 40, bottom: 20 }}
+          margin={{ top: 4, right: 8, left: -10, bottom: 16 }}
         >
+          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" vertical={false} />
           <XAxis
             dataKey="module"
-            angle={0}
-            textAnchor="middle"
-            height={40}
-            tick={{ fontSize: 13, fontWeight: 500 }}
+            tick={{ fontSize: 9, fontWeight: 700, fill: "#6B7280" }}
+            axisLine={{ stroke: "#D1D5DB", strokeWidth: 1 }}
+            tickLine={{ stroke: "#D1D5DB" }}
+            interval={0}
+            tickFormatter={(val) => {
+              if (!val) return "";
+              if (val === "Dependency") return "Depend";
+              if (val === "Escalation") return "Escalation";
+              return val;
+            }}
           />
           <YAxis
-            domain={[0, 'auto']}
+            domain={[0, "auto"]}
             allowDecimals={false}
-            label={{ value: "Count", angle: -90, position: "insideLeft", offset: 10 }}
-            tick={{ fontSize: 12 }}
+            tick={{ fontSize: 10, fill: "#6B7280" }}
+            axisLine={{ stroke: "#D1D5DB", strokeWidth: 1 }}
+            tickLine={{ stroke: "#D1D5DB" }}
           />
           <Tooltip
-            contentStyle={{
-              background: "#fff",
-              border: "1px solid #ccc",
-              borderRadius: 8,
-              padding: 10,
-            }}
+            contentStyle={{ background: "#fff", border: "1px solid #E5E7EB", borderRadius: 8, fontSize: 11 }}
             formatter={(value) => Number(value).toLocaleString()}
-            labelFormatter={(label) => `${label}`}
           />
           <Legend
-            wrapperStyle={{ paddingTop: 20 }}
+            wrapperStyle={{ paddingTop: 4, fontSize: 10 }}
             verticalAlign="bottom"
-            height={36}
+            height={24}
           />
           {statusKeys.map((key, idx) => (
             <Bar
@@ -88,9 +91,10 @@ export default function StackedColumnChart({ data = [] }) {
               stackId="status-stack"
               fill={COLORS[key] || "#ccc"}
               isAnimationActive={true}
-              animationBegin={idx * 150}
+              animationBegin={500 + (idx * 150)}
               animationDuration={800}
               animationEasing="ease-out"
+              radius={idx === statusKeys.length - 1 ? [3, 3, 0, 0] : [0, 0, 0, 0]}
             />
           ))}
         </BarChart>

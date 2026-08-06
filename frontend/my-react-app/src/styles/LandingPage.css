@@ -88,6 +88,29 @@
 
 
 
+/* ── Hero image wrapper: compact & responsive ── */
+.hero-image-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 300px;           /* keeps it slim on large screens */
+  height: clamp(300px, 65vh, 560px); /* compresses on small/short viewports */
+  border-radius: 1.5rem;
+  overflow: hidden;
+  box-shadow:
+    rgba(0,0,0,0.22) 0px 30px 40px,
+    rgba(0,0,0,0.10) 0px -8px 20px,
+    rgba(0,0,0,0.10) 0px 4px 6px;
+  flex-shrink: 0;
+}
+
+/* On mobile stack: centre + shrink further */
+@media (max-width: 1023px) {
+  .hero-image-wrapper {
+    max-width: 260px;
+    height: clamp(240px, 50vh, 440px);
+  }
+}
+
 .hero-image-base {
   position: absolute;
   inset: 0;

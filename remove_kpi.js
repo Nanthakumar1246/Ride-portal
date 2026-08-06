@@ -7,7 +7,6 @@ try {
 
     // Regex to match the line with indentation
     const regex = /^\s*<KpiCard title="In Progress" value={kpis\.totalInProgress} \/>\r?\n/m;
-
     if (regex.test(content)) {
         const newContent = content.replace(regex, '');
         fs.writeFileSync(path, newContent);

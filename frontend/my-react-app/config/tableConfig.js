@@ -11,7 +11,7 @@ Update Input Label: "Mail" (was "BM Email").
 Update Notification Link: "Notification" (was "BM Notifications").
 Navbar: Remove the "Export" button from the header.
 [MODIFY] 
-LoginPage.jsx
+LoginPage.jsx 
 Update "RIDE.Arche.Global" references if present.
 Backend/API (Verification Only)
 Verify no "Monitoring" strings in critical API responses if they affect UI (mostly likely purely frontend).
@@ -69,6 +69,5 @@ Enter a long text description (more than 7 words).
 Verify cell shows 4 words on line 1, 3 words on line 2, then "Read more...".
 Click "Read more..." -> Expands.
 Click away -> Collapses.
-
 Comment
 Ctrl+Alt+M

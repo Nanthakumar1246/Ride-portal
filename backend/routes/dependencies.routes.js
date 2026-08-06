@@ -7,6 +7,7 @@ import {
   createDependencyHandler,
   updateDependencyHandler,
   decideDependencyResolution,
+  deleteDependenciesHandler,
 } from "../controllers/dependencies.controller.js";
 
 const router = Router();
@@ -19,5 +20,6 @@ router.get("/:id", getDependency);
 router.post("/", createDependencyHandler);
 router.put("/:id", updateDependencyHandler);
 router.post("/decisions/:notificationId", decideDependencyResolution);
+router.post("/delete-multiple", deleteDependenciesHandler);
 
 export default router;

@@ -16,5 +16,4 @@ async function checkCollections() {
         pool.end();
     }
 }
-
 checkCollections();

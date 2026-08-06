@@ -5,7 +5,8 @@ import {
   getAction,
   createActionHandler,
   updateActionHandler,
-  decideActionResolution,
+  deleteActionsHandler,
+  bulkUploadActionsHandler,
 } from "../controllers/actions.controller.js";
 
 const router = Router();
@@ -14,6 +15,7 @@ router.get("/", listActions);
 router.get("/:id", getAction);
 router.post("/", createActionHandler);
 router.put("/:id", updateActionHandler);
-router.post("/decisions/:notificationId", decideActionResolution);
+router.post("/bulk", bulkUploadActionsHandler);
+router.post("/delete-multiple", deleteActionsHandler);
 
 export default router;

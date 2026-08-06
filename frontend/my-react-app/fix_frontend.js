@@ -1,7 +1,5 @@
-
 import { readFileSync, writeFileSync } from 'fs';
 const path = 'c:\\Users\\Santhosh B\\Downloads\\uagpl\\archeride1.0-main\\frontend\\my-react-app\\src\\pages\\MonitoringDashboardPage.jsx';
-
 try {
     let content = readFileSync(path, 'utf8');
 
@@ -63,7 +61,6 @@ try {
 
     writeFileSync(path, content);
     console.log("Frontend fix script finished.");
-
 } catch (err) {
     console.error("Error fixing frontend:", err);
 }

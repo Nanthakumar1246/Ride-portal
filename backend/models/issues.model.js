@@ -29,6 +29,9 @@ export async function findIssues({ whereSql = "", params = [] } = {}) {
       i.root_cause_analysis,
       i.last_updated,
       i.comments,
+      i.project_manager,
+      i.program_manager,
+      i.behalf_of,
       i.reported_by as created_by,
       i.created_at,
       i.updated_at
@@ -43,10 +46,12 @@ export async function findIssues({ whereSql = "", params = [] } = {}) {
 
 
 export async function findIssueById(id) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const col = isUuid ? "i.id" : "i.issue_id";
   const sql = `
     SELECT i.*
     FROM issues i
-    WHERE i.id = $1
+    WHERE ${col} = $1
   `;
   const { rows } = await pool.query(sql, [id]);
   return rows[0];
@@ -75,10 +80,13 @@ export async function createIssue(data) {
       resolution_details,
       root_cause_analysis,
       last_updated,
-      comments
+      comments,
+      project_manager,
+      program_manager,
+      behalf_of
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,
-      $10,$11,$12,$13,$14,$15,$16,$17,$18,now(),$19
+      $10,$11,$12,$13,$14,$15,$16,$17,$18,now(),$19,$20,$21,$22
     )
     RETURNING *;
   `;
@@ -102,7 +110,10 @@ export async function createIssue(data) {
     data.actual_resolution_date || null,
     data.resolution_details || null,
     data.root_cause_analysis || null,
-    data.comments || null
+    data.comments || null,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -111,6 +122,9 @@ export async function createIssue(data) {
 
 
 export async function updateIssue(id, data) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const whereCol = isUuid ? "id" : "issue_id";
+
   const sql = `
     UPDATE issues SET
       issue_id = $1,
@@ -133,8 +147,11 @@ export async function updateIssue(id, data) {
       root_cause_analysis = $17,
       last_updated = now(),
       comments = $18,
+      project_manager = $21,
+      program_manager = $22,
+      behalf_of = $23,
       updated_at = now()
-    WHERE id = $19
+    WHERE ${whereCol} = $19
     RETURNING *;
   `;
 
@@ -158,7 +175,10 @@ export async function updateIssue(id, data) {
     data.root_cause_analysis || null,
     data.comments || null,
     id,
-    data.manual_project_id 
+    data.manual_project_id,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -179,8 +199,22 @@ export async function countAll() {
 
 export async function countByStatus(status) {
   const result = await pool.query(
-    "SELECT COUNT(*) AS c FROM issues WHERE status = $1",
+    "SELECT COUNT(*) AS c FROM issues WHERE status::text = $1::text",
     [status]
   );
   return Number(result.rows[0].c);
+}
+
+export async function findIssuesByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const sql = `SELECT * FROM issues WHERE id = ANY($1::uuid[])`;
+  const { rows } = await pool.query(sql, [ids]);
+  return rows;
+}
+
+export async function deleteMultipleIssues(ids) {
+  if (!ids || ids.length === 0) return 0;
+  const sql = `DELETE FROM issues WHERE id = ANY($1::uuid[]) RETURNING *`;
+  const { rowCount } = await pool.query(sql, [ids]);
+  return rowCount;
 }

@@ -1,7 +1,9 @@
-
+import db from "../db.js";
 import * as usersModel from "../models/users.model.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
+import twilio from "twilio";
+import nodemailer from "nodemailer";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
@@ -143,7 +145,7 @@ export async function approveBMHandler(req, res) {
     await usersModel.createUser({
       name: bmEmailLower.split("@")[0],
       email: bmEmailLower,
-      password_hash: null,
+      password_hash: "",
       role: "BM"
     });
 
@@ -208,5 +210,120 @@ export async function getApprovedBMsHandler(req, res) {
   } catch (err) {
     console.error("Get Approved BMs Error", err);
     return res.status(500).json({ success: false, message: "Failed to fetch BMs" });
+  }
+}
+
+export async function forgotPasswordOtpHandler(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ success: false, message: "Email is required" });
+    }
+
+    // Auto-migrate if the columns don't exist yet
+    try {
+      await db.query(`
+          ALTER TABLE users 
+          ADD COLUMN IF NOT EXISTS mobile_number VARCHAR(20),
+          ADD COLUMN IF NOT EXISTS reset_otp VARCHAR(10),
+          ADD COLUMN IF NOT EXISTS reset_otp_expires_at TIMESTAMP
+      `);
+    } catch (e) {
+      console.log("Migration check failed:", e.message);
+    }
+
+    const emailLower = email.toLowerCase().trim();
+    const user = await usersModel.findByEmail(emailLower);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // mobileNumber is no longer required, so we just pass null for it
+    await usersModel.saveOtp(user.id, otp, null);
+
+    console.log(`\n========================================`);
+    console.log(`MOCK EMAIL LOG: Preparing to send OTP ${otp} to ${user.email}`);
+    console.log(`========================================\n`);
+
+    let emailSent = false;
+
+    // Try to send real Email via Outlook/SMTP if configured
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: "smtp.office365.com",
+          port: 587,
+          secure: false, 
+          requireTLS: true,
+          auth: {
+            user: process.env.EMAIL_USER,
+            pass: process.env.EMAIL_PASS,
+          }
+        });
+
+        await transporter.sendMail({
+          from: `"RIDE+ Security" <${process.env.EMAIL_USER}>`,
+          to: user.email,
+          subject: "Your RIDE+ Password Reset OTP",
+          text: `Your RIDE+ Password Reset OTP is: ${otp}\n\nIt will expire in 10 minutes.`,
+          html: `<h3>RIDE+ Security</h3><p>Your Password Reset OTP is: <strong>${otp}</strong></p><p>It will expire in 10 minutes.</p>`
+        });
+        
+        console.log(`Real Email sent successfully to ${user.email}!`);
+        emailSent = true;
+      } catch (emailErr) {
+        console.error("Failed to send real Email:", emailErr.message);
+      }
+    } else {
+      console.log("NOTE: Real Email not sent. Missing EMAIL_USER and EMAIL_PASS in .env file.");
+    }
+
+    // Try to send real SMS via Twilio if configured
+    let smsSent = false;
+    // Mobile number removed from requirement, skipping SMS logic
+
+    return res.status(200).json({ 
+      success: true, 
+      message: emailSent ? "OTP sent successfully to your Email!" : "OTP generated! Check the backend terminal to see it." 
+    });
+  } catch (err) {
+    console.error("Forgot password OTP error:", err);
+    return res.status(500).json({ success: false, message: "Failed to process request" });
+  }
+}
+
+export async function resetPasswordOtpHandler(req, res) {
+  try {
+    const { email, otp, newPassword } = req.body;
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({ success: false, message: "Missing required fields" });
+    }
+
+    const emailLower = email.toLowerCase().trim();
+    const user = await usersModel.findByEmail(emailLower);
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // Verify OTP from database (you need to query the user's OTP directly or add a method for it)
+    // Since findByEmail does a SELECT *, it might not have the newly added columns if we didn't restart or if they weren't in schema, wait, findByEmail does SELECT * so it will have them.
+    if (!user.reset_otp || user.reset_otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+
+    if (new Date() > new Date(user.reset_otp_expires_at)) {
+      return res.status(400).json({ success: false, message: "OTP has expired" });
+    }
+
+    const newPasswordHash = await bcrypt.hash(newPassword, 10);
+    await usersModel.updatePassword(user.id, newPasswordHash);
+    await usersModel.clearOtp(user.id);
+
+    return res.status(200).json({ success: true, message: "Password reset successfully!" });
+  } catch (err) {
+    console.error("Reset password OTP error:", err);
+    return res.status(500).json({ success: false, message: "Failed to reset password" });
   }
 }

@@ -17,7 +17,9 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
-    "pg": "^8.11.5"
+    "nodemailer": "^9.0.3",
+    "pg": "^8.11.5",
+    "twilio": "^6.0.2"
   },
   "devDependencies": {
     "nodemon": "^3.1.11"

@@ -1,7 +1,7 @@
 
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { loginApi, resetPasswordExpiredApi } from "../api/authApi";
+import { loginApi, resetPasswordExpiredApi, forgotPasswordOtpApi, resetPasswordOtpApi } from "../api/authApi";
 import { useAuth } from "../context/AuthContext";
 import logo from "../assets/arche-logo2.png";
 import loginVideo from "../assets/login-hero.mp4";
@@ -23,6 +23,10 @@ function LoginPage() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [requireOldPassword, setRequireOldPassword] = useState(true);
+
+  const [isForgotMode, setIsForgotMode] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
 
 
   const [text1, setText1] = useState("");
@@ -48,7 +52,6 @@ function LoginPage() {
     "Business opportunities are like buses, there's always another one coming.",
     "Success usually comes to those who are too busy to be looking for it.",
     "Don't sit down and wait for the opportunities to come. Get up and make them.",
-    "The way to get started is to quit talking and begin doing.",
     "There's no shortage of remarkable ideas, what's missing is the will to execute them.",
     "Far and away the best prize that life offers is the chance to work hard at work worth doing.",
     "If you really look closely, most overnight successes took a long time.",
@@ -81,7 +84,6 @@ function LoginPage() {
     const interval = setInterval(() => {
       setQuoteIndex((prev) => (prev + 1) % QUOTES.length);
     }, 5000);
-    if (window.stopCeremonyAudio) window.stopCeremonyAudio();
     return () => clearInterval(interval);
   }, [QUOTES.length]);
 
@@ -148,6 +150,50 @@ function LoginPage() {
       setConfirmPassword("");
     } catch (err) {
       setError(err.message || "Failed to update password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSendOtp = async (e) => {
+    e.preventDefault();
+    if (!email) {
+      setError("Email is required");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    setInfo("");
+    try {
+      const res = await forgotPasswordOtpApi(email);
+      setInfo(res.message || "OTP sent successfully!");
+      setOtpSent(true);
+    } catch (err) {
+      setError(err.message || "Failed to send OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResetWithOtp = async (e) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const res = await resetPasswordOtpApi(email, otp, newPassword);
+      setInfo(res.message || "Password updated successfully!");
+      setIsForgotMode(false);
+      setOtpSent(false);
+      setPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      setOtp("");
+    } catch (err) {
+      setError(err.message || "Failed to reset password");
     } finally {
       setLoading(false);
     }
@@ -258,6 +304,98 @@ function LoginPage() {
               </form>
             </div>
 
+          ) : isForgotMode ? (
+
+            <div className="animate-fade-in-up">
+              <div className="mb-6 text-center">
+                <h2 className="text-xl font-bold text-gray-900 mb-2">Reset Password</h2>
+                <p className="text-gray-500 text-sm">
+                  {!otpSent ? "Enter your email to receive an OTP." : "Enter the OTP sent to your email."}
+                </p>
+              </div>
+
+              {!otpSent ? (
+                <form onSubmit={handleSendOtp} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Email Address</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="user@arche.global"
+                      className="w-full p-3 rounded border border-gray-200 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-blue-600 text-white py-3 rounded font-bold uppercase tracking-wider text-sm hover:bg-blue-700 transition shadow-md"
+                  >
+                    {loading ? "Sending..." : "Send OTP"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsForgotMode(false); setError(""); setInfo(""); }}
+                    className="w-full text-center text-xs font-bold text-gray-500 hover:text-black mt-4 uppercase tracking-wide"
+                  >
+                    Back to Login
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleResetWithOtp} className="space-y-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">OTP</label>
+                    <input
+                      type="text"
+                      value={otp}
+                      onChange={(e) => setOtp(e.target.value)}
+                      placeholder="Enter 6-digit OTP"
+                      className="w-full p-3 rounded border border-gray-200 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none tracking-widest text-center"
+                      maxLength={6}
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">New Password</label>
+                    <input
+                      type="password"
+                      placeholder="Enter new password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full p-3 rounded border border-gray-200 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
+                      required
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase">Confirm Password</label>
+                    <input
+                      type="password"
+                      placeholder="Confirm new password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      className="w-full p-3 rounded border border-gray-200 text-sm focus:border-black focus:ring-1 focus:ring-black outline-none"
+                      required
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-blue-600 text-white py-3 rounded font-bold uppercase tracking-wider text-sm hover:bg-blue-700 transition shadow-md"
+                  >
+                    {loading ? "Resetting..." : "Reset Password"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsForgotMode(false); setOtpSent(false); setError(""); setInfo(""); }}
+                    className="w-full text-center text-xs font-bold text-gray-500 hover:text-black mt-4 uppercase tracking-wide"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              )}
+            </div>
+
           ) : (
 
             <>
@@ -293,6 +431,16 @@ function LoginPage() {
                       {showPass ? "HIDE" : "SHOW"}
                     </button>
                   </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button 
+                    type="button" 
+                    onClick={() => { setIsForgotMode(true); setError(""); setInfo(""); }} 
+                    className="text-xs font-bold text-blue-600 hover:text-blue-800 transition"
+                  >
+                    Forgot Password?
+                  </button>
                 </div>
 
                 <button

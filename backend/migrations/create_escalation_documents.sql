@@ -1,5 +1,4 @@
 -- backend/migrations/create_escalation_documents.sql
-
 CREATE TABLE IF NOT EXISTS escalation_documents (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   escalation_id UUID NOT NULL REFERENCES escalations(id) ON DELETE CASCADE,

@@ -31,6 +31,9 @@ export async function findEscalations({ whereSql = "", params = [] } = {}) {
       e.preventive_actions,
       e.last_updated,
       e.comments,
+      e.project_manager,
+      e.program_manager,
+      e.behalf_of,
       u.email as created_by,
       e.created_at,
       e.updated_at,
@@ -50,6 +53,9 @@ export async function findEscalations({ whereSql = "", params = [] } = {}) {
 
 
 export async function findEscalationById(id) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const whereClause = isUuid ? "e.id = $1" : "e.escalation_id = $1";
+
   const sql = `
     SELECT e.*, u.email as created_by,
       (
@@ -59,7 +65,7 @@ export async function findEscalationById(id) {
       ) as documents
     FROM escalations e
     LEFT JOIN users u ON e.created_by = u.id
-    WHERE e.id = $1
+    WHERE ${whereClause}
   `;
   const { rows } = await pool.query(sql, [id]);
   return rows[0];
@@ -104,10 +110,13 @@ export async function createEscalation(data, userId) {
       preventive_actions,
       last_updated,
       comments,
-      created_by
+      created_by,
+      project_manager,
+      program_manager,
+      behalf_of
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-      $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21, $22, $23
+      $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21, $22, $23, $24, $25, $26
     )
     RETURNING *;
   `;
@@ -135,7 +144,10 @@ export async function createEscalation(data, userId) {
     data.preventive_actions || null,
     data.last_updated,
     data.comments || null,
-    userId
+    userId,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -168,6 +180,9 @@ export async function updateEscalation(id, data) {
       preventive_actions = $19,
       last_updated = $20,
       comments = $21,
+      project_manager = $24,
+      program_manager = $25,
+      behalf_of = $26,
       updated_at = now()
     WHERE id = $22
     RETURNING *;
@@ -196,7 +211,10 @@ export async function updateEscalation(id, data) {
     data.last_updated,
     data.comments || null,
     id,
-    data.manual_project_id 
+    data.manual_project_id,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -227,4 +245,18 @@ export async function createEscalationDocument(data) {
   ];
   const { rows } = await pool.query(sql, params);
   return rows[0];
+}
+
+export async function findEscalationsByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const sql = `SELECT * FROM escalations WHERE id = ANY($1::uuid[])`;
+  const { rows } = await pool.query(sql, [ids]);
+  return rows;
+}
+
+export async function deleteMultipleEscalations(ids) {
+  if (!ids || ids.length === 0) return 0;
+  const sql = `DELETE FROM escalations WHERE id = ANY($1::uuid[]) RETURNING *`;
+  const { rowCount } = await pool.query(sql, [ids]);
+  return rowCount;
 }

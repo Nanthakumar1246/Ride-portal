@@ -3,7 +3,7 @@
 
 
 export const filterConfig = {
-  
+
   risks: {
     fields: [
       { name: "account", label: "Account", type: "text" },
@@ -17,7 +17,7 @@ export const filterConfig = {
       },
       {
         name: "category", label: "Category", type: "select",
-        options: ["Schedule", "Scope", "Technical", "Resource", "Security", "Operational"]
+        options: ["Schedule", "Scope", "Technical", "Resource", "Security", "Operational", "Revenue Risk"]
       },
       {
         name: "probability", label: "Probability", type: "select",
@@ -30,12 +30,12 @@ export const filterConfig = {
     ]
   },
 
-  
-  
+
+
   issues: {
     fields: [
       { name: "account", label: "Account", type: "text" },
-      { name: "search", label: "Search", type: "text" }, 
+      { name: "search", label: "Search", type: "text" },
       {
         name: "status", label: "Status", type: "select",
         options: ["Open", "Resolved", "Approved & Closed", "Cancelled"]
@@ -46,13 +46,13 @@ export const filterConfig = {
       },
       {
         name: "category", label: "Category", type: "select",
-        options: ["Technical", "Operational", "Resource", "Infrastructure", "Application", "Network", "Security", "Performance"]
+        options: ["Technical", "Operational", "Resource", "Infrastructure", "Application", "Network", "Security", "Performance", "Revenue Risk"]
       }
     ]
   },
-  
 
-  
+
+
   dependencies: {
     fields: [
       { name: "account", label: "Account", type: "text" },
@@ -71,7 +71,7 @@ export const filterConfig = {
     ]
   },
 
-  
+
   escalations: {
     fields: [
       { name: "account", label: "Account", type: "text" },
@@ -85,12 +85,12 @@ export const filterConfig = {
       },
       {
         name: "category", label: "Category", type: "select",
-        options: ["Performance", "Availability", "Security", "Quality", "Communication", "Resource", "Budget", "Scope"]
+        options: ["Performance", "Availability", "Security", "Quality", "Communication", "Resource", "Budget", "Scope", "Revenue Risk"]
       }
     ]
   },
 
-  
+
   actions: {
     fields: [
       { name: "account", label: "Account", type: "text" },
@@ -106,7 +106,7 @@ export const filterConfig = {
         name: "related_to_type", label: "Related To", type: "select",
         options: ["Risk", "Issue"]
       }
-      
+
     ]
   }
 };

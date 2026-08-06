@@ -5,7 +5,8 @@ import {
   createEscalationHandler,
   updateEscalationHandler,
   decideEscalationResolution,
-  resolveEscalation
+  resolveEscalation,
+  deleteEscalationsHandler,
 } from "../controllers/escalations.controller.js";
 import upload from "../config/multer.config.js";
 
@@ -16,5 +17,6 @@ router.post("/", createEscalationHandler);
 router.put("/:id", updateEscalationHandler);
 router.post("/decisions/:notificationId", decideEscalationResolution);
 router.post("/:id/resolve", upload.array("documents", 3), resolveEscalation);
+router.post("/delete-multiple", deleteEscalationsHandler);
 
 export default router;

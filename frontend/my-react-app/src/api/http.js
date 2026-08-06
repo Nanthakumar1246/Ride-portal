@@ -18,7 +18,10 @@ export function authHeaders() {
 export async function handleResponse(res) {
     const body = await res.json().catch(() => ({}));
     if (!res.ok || body.success === false) {
-        throw new Error(body.message || "Request failed");
+        const message = body.message || "Request failed";
+        const error = new Error(message);
+        error.status = res.status;
+        throw error;
     }
     return body.data !== undefined ? body.data : body;
 }

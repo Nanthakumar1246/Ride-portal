@@ -1,12 +1,11 @@
 import pool from "../db.js";
 
-
 export async function createResolutionNotification({
   module,
   itemId,
   itemCode,
   statusBefore,
-  statusAfter, 
+  statusAfter,
   payload,
   bmUser,
 }) {
@@ -37,9 +36,7 @@ export async function createResolutionNotification({
   return rows[0];
 }
 
-
 export async function decideNotification({ id, adminUser, decision, comment }) {
-  
   const notifSql = `
     UPDATE notifications
     SET admin_user = $2,
@@ -60,8 +57,6 @@ export async function decideNotification({ id, adminUser, decision, comment }) {
   const notif = rows[0];
   if (!notif) throw new Error("Notification not found");
 
-  
-  
   await pool.query(`
     UPDATE notifications
     SET decision = 'Auto-Closed', decided_at = NOW(), admin_user = $1
@@ -71,7 +66,6 @@ export async function decideNotification({ id, adminUser, decision, comment }) {
       AND id != $4
   `, [adminUser || 'System', notif.module, notif.item_id, notif.id]);
 
-  
   const FINAL_STATUS =
     decision === "Closed" ? "Approved & Closed" : "On Hold";
 
@@ -90,7 +84,6 @@ export async function decideNotification({ id, adminUser, decision, comment }) {
       [FINAL_STATUS, notif.item_id]
     );
 
-    
     if (notif.bm_user) {
       const bmTable = `bm_${notif.module}_notifications`;
       const idCol = `${notif.module}_id`;
@@ -104,7 +97,6 @@ export async function decideNotification({ id, adminUser, decision, comment }) {
 
   return notif;
 }
-
 
 function baseAdminQuery(module, table, titleCol, extraSelect = "") {
   return `
@@ -120,12 +112,9 @@ function baseAdminQuery(module, table, titleCol, extraSelect = "") {
     LEFT JOIN projects p ON p.id = t.project_id
     WHERE n.module = '${module}'
       AND n.decision IS NULL
-      AND (t.status ILIKE '%resolved%' OR n.status_after = 'Resolved')
     ORDER BY n.item_id, n.created_at DESC;
   `;
 }
-
-
 
 export async function listPendingRiskNotifications() {
   const { rows } = await pool.query(
@@ -167,7 +156,6 @@ export async function listPendingActionNotifications() {
   return rows;
 }
 
-
 async function countAdmin(module, table) {
   const { rows } = await pool.query(`
     SELECT COUNT(*) AS c
@@ -175,7 +163,6 @@ async function countAdmin(module, table) {
     JOIN ${table} t ON t.id = n.item_id
     WHERE n.module = '${module}'
       AND n.decision IS NULL
-      AND t.status = 'Resolved'
     `);
   return Number(rows[0].c || 0);
 }
@@ -190,8 +177,6 @@ export const countAdminPendingEscalationNotifications = () =>
   countAdmin("escalation", "escalations");
 export const countAdminPendingActionNotifications = () =>
   countAdmin("action", "actions");
-
-
 
 export async function listBmNotificationsByModule(email, module) {
   const sql = `
@@ -243,7 +228,6 @@ export async function listBmActionNotifications(email) {
   return listBmNotificationsByModule(email, "action");
 }
 
-
 export async function countBmNotifications(email) {
   const sql = `
   SELECT
@@ -257,7 +241,6 @@ export async function countBmNotifications(email) {
   const { rows } = await pool.query(sql, [email]);
   return Number(rows[0].c || 0);
 }
-
 
 async function createBmNotification(table, idCol, id, bmEmail, decision, comment) {
   await pool.query(

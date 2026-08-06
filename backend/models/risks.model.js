@@ -29,6 +29,9 @@ export async function findRisks({ whereSql = "", params = [] } = {}) {
       r.current_status,
       r.last_reviewed_date,
       r.comments,
+      r.project_manager,
+      r.program_manager,
+      r.behalf_of,
       u.email as created_by,
       r.created_at,
       r.updated_at
@@ -44,10 +47,12 @@ export async function findRisks({ whereSql = "", params = [] } = {}) {
 
 
 export async function findRiskById(id) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const col = isUuid ? "r.id" : "r.risk_id";
   const sql = `
     SELECT r.*
     FROM risks r
-    WHERE r.id = $1
+    WHERE ${col} = $1
   `;
   const { rows } = await pool.query(sql, [id]);
   return rows[0];
@@ -77,17 +82,20 @@ export async function createRisk(data) {
       current_status,
       last_reviewed_date,
       comments,
-      created_by
+      created_by,
+      project_manager,
+      program_manager,
+      behalf_of
     ) VALUES (
       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
-      $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21
+      $11,$12,$13,$14,$15,$16,$17,$18,$19,$20, $21,$22,$23,$24
     )
     RETURNING *;
   `;
 
   const params = [
     data.risk_id,
-    data.manual_project_id || null, 
+    data.manual_project_id || null,
     data.project_description || null,
     data.account || null,
     data.identified_date,
@@ -106,7 +114,10 @@ export async function createRisk(data) {
     data.current_status || null,
     data.last_reviewed_date || null,
     data.comments || null,
-    data.created_by, 
+    data.created_by,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -115,6 +126,9 @@ export async function createRisk(data) {
 
 
 export async function updateRisk(id, data) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const whereCol = isUuid ? "id" : "risk_id";
+
   const sql = `
     UPDATE risks SET
       risk_id = $1,
@@ -137,8 +151,11 @@ export async function updateRisk(id, data) {
       current_status = $17,
       last_reviewed_date = $18,
       comments = $19,
+      project_manager = $22,
+      program_manager = $23,
+      behalf_of = $24,
       updated_at = NOW()
-    WHERE id = $20
+    WHERE ${whereCol} = $20
     RETURNING *;
   `;
 
@@ -163,7 +180,10 @@ export async function updateRisk(id, data) {
     data.last_reviewed_date || null,
     data.comments || null,
     id,
-    data.manual_project_id, 
+    data.manual_project_id,
+    data.project_manager || null,
+    data.program_manager || null,
+    data.behalf_of || null,
   ];
 
   const { rows } = await pool.query(sql, params);
@@ -183,7 +203,7 @@ export async function countAll() {
 
 export async function countByStatus(status) {
   const result = await pool.query(
-    "SELECT COUNT(*) AS c FROM risks WHERE status = $1",
+    "SELECT COUNT(*) AS c FROM risks WHERE status::text = $1::text",
     [status]
   );
   return Number(result.rows[0].c);
@@ -200,4 +220,66 @@ export async function updateRiskStatus(id, status) {
   `;
   const { rows } = await pool.query(sql, [status, id]);
   return rows[0];
+}
+
+export async function findRisksByIds(ids) {
+  if (!ids || ids.length === 0) return [];
+  const sql = `SELECT * FROM risks WHERE id = ANY($1::uuid[])`;
+  const { rows } = await pool.query(sql, [ids]);
+  return rows;
+}
+
+export async function deleteMultipleRisks(ids) {
+  if (!ids || ids.length === 0) return 0;
+  const sql = `DELETE FROM risks WHERE id = ANY($1::uuid[]) RETURNING *`;
+  const { rowCount } = await pool.query(sql, [ids]);
+  return rowCount;
+}
+
+export async function createRiskHistory({ risk_id, updated_by, old_status, new_status, remarks }) {
+  const sql = `
+    INSERT INTO risk_history (risk_id, updated_by, old_status, new_status, remarks)
+    VALUES ($1, $2, $3, $4, $5)
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(sql, [risk_id, updated_by || null, old_status || null, new_status || null, remarks || null]);
+  return rows[0];
+}
+
+export async function findRiskHistory(risk_id, programManager = null) {
+  if (!risk_id || risk_id === "ALL") {
+    if (programManager) {
+      const sql = `
+        SELECT rh.* FROM risk_history rh
+        JOIN risks r ON r.risk_id = rh.risk_id
+        WHERE r.project_manager::text = $1::text
+        ORDER BY rh.created_at DESC LIMIT 50;
+      `;
+      const { rows } = await pool.query(sql, [programManager]);
+      return rows;
+    }
+    const sql = `SELECT * FROM risk_history ORDER BY created_at DESC LIMIT 50;`;
+    const { rows } = await pool.query(sql);
+    return rows;
+  }
+
+  if (programManager) {
+    const sql = `
+      SELECT rh.* FROM risk_history rh
+      JOIN risks r ON r.risk_id = rh.risk_id
+      WHERE (rh.risk_id = $1 OR rh.risk_id = (SELECT risk_id FROM risks WHERE id::text = $1))
+        AND r.project_manager::text = $2::text
+      ORDER BY rh.created_at DESC;
+    `;
+    const { rows } = await pool.query(sql, [risk_id, programManager]);
+    return rows;
+  }
+
+  const sql = `
+    SELECT * FROM risk_history
+    WHERE risk_id = $1 OR risk_id = (SELECT risk_id FROM risks WHERE id::text = $1)
+    ORDER BY created_at DESC;
+  `;
+  const { rows } = await pool.query(sql, [risk_id]);
+  return rows;
 }

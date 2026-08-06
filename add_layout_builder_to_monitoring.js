@@ -1,9 +1,8 @@
 // Script to add Layout Builder imports and button to all monitoring pages
 // Run with: node add_layout_builder_to_monitoring.js
 
-const fs = require('fs');
-const path = require('path');
-
+const fs = require('fs'); 
+const path = require('path'); 
 const PAGES_DIR = path.join(__dirname, 'frontend', 'my-react-app', 'src', 'pages');
 
 const modules = [
@@ -133,5 +132,4 @@ modules.forEach(({ file, module, formConfig }) => {
     fs.writeFileSync(filePath, content, 'utf8');
     console.log(`✅ Updated ${file}`);
 });
-
 console.log('\n🎉 All monitoring pages updated!');

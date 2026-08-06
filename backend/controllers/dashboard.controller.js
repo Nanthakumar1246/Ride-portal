@@ -1,22 +1,13 @@
 
 import pool from "../db.js";
-
+import { listMembersByManager } from "../models/managers.model.js";
 
 const safeCount = async (sql, params = []) => {
   try {
     const res = await pool.query(sql, params);
     return Number(res.rows[0]?.count || 0);
-  } catch {
-    return 0;
-  }
-};
-
-
-const safeValue = async (sql, field, params = []) => {
-  try {
-    const res = await pool.query(sql, params);
-    return Number(res.rows[0]?.[field] || 0);
-  } catch {
+  } catch (err) {
+    console.error("safeCount error:", err.message);
     return 0;
   }
 };
@@ -25,473 +16,204 @@ export async function getDashboardMetrics(req, res) {
   try {
     const currentYear = new Date().getFullYear();
     const selectedYear = parseInt(req.query.year) || currentYear;
-
     const riskYear = parseInt(req.query.risk_year) || selectedYear;
-
     const priorityParam = req.query.priority || null;
+    const managerParam = req.query.manager || 'All';
 
-
-    const kpiParams = [];
-    let pCond = "";
-    if (priorityParam) {
-      pCond = " AND priority = $1 ";
-      kpiParams.push(priorityParam);
+    // 1. Resolve Manager Filter
+    let managerMembers = [];
+    if (managerParam !== 'All') {
+        managerMembers = await listMembersByManager(managerParam);
     }
 
+    // PM-role users are scoped to their own Program Manager records, regardless of the manager param.
+    const pmName = req.user?.role === "PM" ? req.user.name : null;
 
+    const buildFilters = (baseTable) => {
+      const filters = { where: " WHERE 1=1 ", params: [] };
+      let i = 1;
 
-    const total_open = await safeCount(`
-      SELECT COUNT(*) FROM (
-        SELECT id FROM risks WHERE status = 'Open' ${pCond}
-        UNION ALL SELECT id FROM issues WHERE status = 'Open' ${pCond}
-        UNION ALL SELECT id FROM actions WHERE status = 'Open' ${pCond}
-        UNION ALL SELECT id FROM dependencies WHERE status = 'Open' ${pCond}
-        UNION ALL SELECT id FROM escalations WHERE status = 'Open' ${pCond}
-      ) t
-    `, kpiParams);
-
-
-    const total_on_hold = await safeCount(`
-      SELECT COUNT(*) FROM (
-        SELECT id FROM risks WHERE status IN ('In Progress', 'On Hold') ${pCond}
-        UNION ALL SELECT id FROM issues WHERE status IN ('In Progress', 'On Hold') ${pCond}
-        UNION ALL SELECT id FROM actions WHERE status IN ('In Progress', 'On Hold') ${pCond}
-        UNION ALL SELECT id FROM dependencies WHERE status IN ('In Progress', 'On Hold') ${pCond}
-        UNION ALL SELECT id FROM escalations WHERE status IN ('In Progress', 'On Hold') ${pCond}
-      ) t
-    `, kpiParams);
-
-
-    const resolved = await safeCount(`
-      SELECT COUNT(*) FROM (
-        SELECT id FROM risks WHERE status = 'Resolved' ${pCond}
-        UNION ALL SELECT id FROM issues WHERE status = 'Resolved' ${pCond}
-        UNION ALL SELECT id FROM actions WHERE status = 'Resolved' ${pCond}
-        UNION ALL SELECT id FROM dependencies WHERE status = 'Resolved' ${pCond}
-        UNION ALL SELECT id FROM escalations WHERE status = 'Resolved' ${pCond}
-      ) t
-    `, kpiParams);
-
-    const approved = await safeCount(`
-      SELECT COUNT(*) FROM (
-        SELECT id FROM risks WHERE status = 'Approved & Closed' ${pCond}
-        UNION ALL SELECT id FROM issues WHERE status = 'Approved & Closed' ${pCond}
-        UNION ALL SELECT id FROM actions WHERE status = 'Approved & Closed' ${pCond}
-        UNION ALL SELECT id FROM dependencies WHERE status = 'Approved & Closed' ${pCond}
-        UNION ALL SELECT id FROM escalations WHERE status = 'Approved & Closed' ${pCond}
-      ) t
-    `, kpiParams);
-
-    const cancelled = await safeCount(`
-      SELECT COUNT(*) FROM (
-        SELECT id FROM risks WHERE status = 'Cancelled' ${pCond}
-        UNION ALL SELECT id FROM issues WHERE status = 'Cancelled' ${pCond}
-        UNION ALL SELECT id FROM actions WHERE status = 'Cancelled' ${pCond}
-        UNION ALL SELECT id FROM dependencies WHERE status = 'Cancelled' ${pCond}
-        UNION ALL SELECT id FROM escalations WHERE status = 'Cancelled' ${pCond}
-      ) t
-    `, kpiParams);
-
-    const total_items = await safeValue(`
-      SELECT 
-        (SELECT COUNT(*) FROM risks WHERE 1=1 ${pCond}) +
-        (SELECT COUNT(*) FROM issues WHERE 1=1 ${pCond}) +
-        (SELECT COUNT(*) FROM actions WHERE 1=1 ${pCond}) +
-        (SELECT COUNT(*) FROM dependencies WHERE 1=1 ${pCond}) +
-        (SELECT COUNT(*) FROM escalations WHERE 1=1 ${pCond}) AS total
-    `, 'total', kpiParams);
-
-
-    const prioritySplit = [];
-    try {
-      const res = await pool.query(`
-        SELECT priority, COUNT(*)::INT AS count 
-        FROM (
-             SELECT priority FROM risks
-   UNION ALL SELECT priority FROM issues
-   UNION ALL SELECT priority FROM actions
-   UNION ALL SELECT priority FROM dependencies
-   UNION ALL SELECT priority FROM escalations
-        ) t
-        WHERE priority IS NOT NULL
-        GROUP BY priority
-        ORDER BY priority
-      `);
-      res.rows.forEach(r => {
-        prioritySplit.push({ priority: r.priority || 'Unknown', count: r.count });
-      });
-    } catch (e) { console.error('Priority split error:', e); }
-
-
-    const priority_by_module = {};
-    const modulesToCheck = [
-      { key: 'Risk', table: 'risks' },
-      { key: 'Issue', table: 'issues' },
-      { key: 'Action', table: 'actions' },
-      { key: 'Dependency', table: 'dependencies' },
-      { key: 'Escalation', table: 'escalations' }
-    ];
-
-    for (const m of modulesToCheck) {
-      try {
-        const res = await pool.query(`
-          SELECT priority, COUNT(*)::INT as count
-          FROM ${m.table}
-          WHERE priority IS NOT NULL
-          GROUP BY priority
-        `);
-        const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-        res.rows.forEach(r => {
-          if (counts.hasOwnProperty(r.priority)) {
-            counts[r.priority] = Number(r.count);
-          }
-        });
-        priority_by_module[m.key] = counts;
-      } catch (e) {
-        console.error(`Priority split error for ${m.key}:`, e);
-        priority_by_module[m.key] = { Critical: 0, High: 0, Medium: 0, Low: 0 };
-      }
-    }
-
-
-
-    const monthly_risk_trend = [];
-    try {
-      const allMonths = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      const trendParams = [riskYear];
-      let trendWhere = " AND EXTRACT(YEAR FROM identified_date) = $1 ";
       if (priorityParam) {
-        trendWhere += " AND priority = $2 ";
-        trendParams.push(priorityParam);
+        filters.where += ` AND priority::text = $${i++}::text `;
+        filters.params.push(priorityParam);
       }
 
-      const res = await pool.query(`
-        SELECT TO_CHAR(identified_date, 'Mon') AS month, COUNT(*)::INT AS count
-        FROM risks
-        WHERE identified_date IS NOT NULL 
-        ${trendWhere}
-        GROUP BY TO_CHAR(identified_date, 'Mon'), EXTRACT(MONTH FROM identified_date)
-        ORDER BY EXTRACT(MONTH FROM identified_date)
-      `, trendParams);
-
-      const monthMap = {};
-      res.rows.forEach(r => { monthMap[r.month] = r.count; });
-      allMonths.forEach(month => {
-        monthly_risk_trend.push({ month, count: monthMap[month] || 0 });
-      });
-    } catch (e) { console.error('Monthly trend error:', e); }
-
-    const available_years = [];
-    try {
-      const res = await pool.query(`
-        SELECT DISTINCT EXTRACT(YEAR FROM identified_date)::INT AS year
-        FROM risks
-        WHERE identified_date IS NOT NULL
-        ORDER BY year DESC
-      `);
-      res.rows.forEach(r => { available_years.push(r.year); });
-    } catch (e) { console.error('Available years error:', e); }
-
-
-    const module_status = [];
-    const mods = [
-      { name: 'Risk', table: 'risks' },
-      { name: 'Issue', table: 'issues' },
-      { name: 'Dependency', table: 'dependencies' },
-      { name: 'Action', table: 'actions' },
-      { name: 'Escalation', table: 'escalations' }
-    ];
-
-    for (const m of mods) {
-
-      const modParams = priorityParam ? [priorityParam] : [];
-      const modCond = priorityParam ? " AND priority = $1 " : "";
-
-      const r = await pool.query(`
-        SELECT 
-          SUM(CASE WHEN status = 'Open' THEN 1 ELSE 0 END)::INT AS open_count,
-          SUM(CASE WHEN status IN ('In Progress', 'On Hold') THEN 1 ELSE 0 END)::INT AS on_hold_count,
-          SUM(CASE WHEN status IN ('Resolved', 'Approved & Closed') THEN 1 ELSE 0 END)::INT AS resolved_count,
-          SUM(CASE WHEN status = 'Cancelled' THEN 1 ELSE 0 END)::INT AS cancelled_count
-        FROM ${m.table}
-        WHERE 1=1 ${modCond}
-      `, modParams);
-
-      module_status.push({
-        module: m.name,
-        Open: r.rows[0].open_count || 0,
-        "On Hold": r.rows[0].on_hold_count || 0,
-        Resolved: r.rows[0].resolved_count || 0,
-        Cancelled: r.rows[0].cancelled_count || 0
-      });
-    }
-
-
-    const latestWhere = priorityParam ? " WHERE priority = $1 " : "";
-    const latestParams = priorityParam ? [priorityParam] : [];
-
-    const latest_risks = (await pool.query(`SELECT risk_id, risk_title, priority, status, account, identified_date, updated_at FROM risks ${latestWhere} ORDER BY updated_at DESC`, latestParams)).rows;
-    const latest_issues = (await pool.query(`SELECT issue_id, issue_title, priority, status, account, reported_date as identified_date, updated_at FROM issues ${latestWhere} ORDER BY updated_at DESC`, latestParams)).rows;
-    const latest_actions = (await pool.query(`SELECT action_id, action_title, priority, status, updated_at FROM actions ${latestWhere} ORDER BY updated_at DESC`, latestParams)).rows;
-    const latest_dependencies = (await pool.query(`SELECT dependency_id, dependency_title, priority, status, updated_at FROM dependencies ${latestWhere} ORDER BY updated_at DESC`, latestParams)).rows;
-
-
-
-
-
-    let top_priority_items = [];
-    try {
-
-
-
-
-      const priorityLimit = 10;
-
-      const sql = `
-        SELECT * FROM (
-          SELECT 
-            'Risk' as type, 
-            risk_id as id, 
-            risk_title as title, 
-            project_description as project, 
-            priority, 
-            impact, 
-            risk_score,
-            updated_at
-          FROM risks 
-          WHERE (priority IN ('Critical', 'High') OR impact IN ('Major', 'Critical')) 
-            AND status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')
-
-          UNION ALL
-
-          SELECT 
-            'Issue' as type, 
-            issue_id as id, 
-            issue_title as title, 
-            project_description as project, 
-            priority, 
-            NULL as impact, 
-            NULL as risk_score,
-            updated_at
-          FROM issues 
-          WHERE priority IN ('Critical', 'High')
-            AND status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')
-
-          UNION ALL
-
-          SELECT 
-            'Escalation' as type, 
-            escalation_id as id, 
-            title as title, 
-            project_description as project, 
-            priority, 
-            impact, 
-            NULL as risk_score,
-            updated_at
-          FROM escalations 
-          WHERE priority IN ('Critical', 'High')
-            AND status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')
-        ) as combined
-        ORDER BY 
-          CASE priority WHEN 'Critical' THEN 1 WHEN 'High' THEN 2 ELSE 3 END ASC,
-          updated_at DESC
-        LIMIT 20
-      `;
-
-      const res = await pool.query(sql);
-      top_priority_items = res.rows;
-    } catch (e) {
-      console.error("Top priority items error", e);
-    }
-
-
-
-
-
-    const actionWeeksParams = priorityParam ? [priorityParam] : [];
-    const actionWeeksWhere = priorityParam ? " AND priority = $1 " : "";
-
-
-    const available_action_weeks = [];
-    try {
-      const res = await pool.query(`
-        SELECT DISTINCT DATE_TRUNC('week', created_date)::DATE as week_start
-        FROM actions
-        WHERE created_date IS NOT NULL ${actionWeeksWhere}
-        ORDER BY week_start DESC
-      `, actionWeeksParams);
-      res.rows.forEach(r => {
-
-        const d = new Date(r.week_start);
-        const val = d.toISOString().split('T')[0];
-        available_action_weeks.push({ value: val, label: `Week of ${val}` });
-      });
-    } catch (e) { console.error('Available action weeks error:', e); }
-
-    let selectedWeek = req.query.week_start;
-
-    if (!selectedWeek && available_action_weeks.length > 0) {
-      selectedWeek = available_action_weeks[0].value;
-    }
-
-    const weekly_action_status = { week_label: selectedWeek || "Current", Open: 0, "On Hold": 0, Resolved: 0 };
-    if (selectedWeek) {
-      const weekParams = [selectedWeek];
-      let weekWhere = " AND DATE_TRUNC('week', created_date)::DATE = $1 ";
-      if (priorityParam) {
-        weekWhere += " AND priority = $2 ";
-        weekParams.push(priorityParam);
+      if (pmName) {
+        filters.where += ` AND project_manager::text = $${i++}::text `;
+        filters.params.push(pmName);
       }
 
-      try {
-        const res = await pool.query(`
-          SELECT 
-            SUM(CASE WHEN status = 'Open' THEN 1 ELSE 0 END)::INT as open_c,
-            SUM(CASE WHEN status IN ('In Progress', 'On Hold') THEN 1 ELSE 0 END)::INT as hold_c,
-            SUM(CASE WHEN status IN ('Resolved', 'Approved & Closed', 'Cancelled') THEN 1 ELSE 0 END)::INT as res_c
-          FROM actions
-          WHERE created_date IS NOT NULL ${weekWhere}
-        `, weekParams);
+      const fieldMap = { risks: 'identified_by', issues: 'reported_by', actions: 'created_by', dependencies: 'reported_by', escalations: 'reported_by' };
+      const col = fieldMap[baseTable] || 'reported_by';
 
-        if (res.rows.length) {
-          weekly_action_status.Open = res.rows[0].open_c;
-          weekly_action_status["On Hold"] = res.rows[0].hold_c;
-          weekly_action_status.Resolved = res.rows[0].res_c;
+      if (managerParam && managerParam !== 'All') {
+        const clauses = [];
+        if (managerMembers && managerMembers.length > 0) {
+          managerMembers.forEach(m => {
+            clauses.push(`${col}::text = $${i++}::text`); filters.params.push(m);
+            clauses.push(`${col}::text = $${i++}::text`); filters.params.push(`${managerParam} - ${m}`);
+          });
         }
-      } catch (e) {
-        console.error("Weekly action status error", e);
+        const mIdx = i++;
+        clauses.push(`${col}::text = $${mIdx}::text`); filters.params.push(managerParam);
+        clauses.push(`${col}::text LIKE $${mIdx}::text || ' - %'`);
+        filters.where += ` AND (${clauses.join(' OR ')}) `;
       }
-    }
-
-
-    let action_completion_percent = 0;
-    try {
-      const res = await pool.query(`
-         SELECT 
-           COUNT(*)::FLOAT as total,
-           SUM(CASE WHEN status IN ('Resolved', 'Approved & Closed', 'Cancelled') THEN 1 ELSE 0 END)::FLOAT as closed
-         FROM actions
-         WHERE 1=1 ${actionWeeksWhere}
-       `, actionWeeksParams);
-      const t = res.rows[0].total || 0;
-      const c = res.rows[0].closed || 0;
-      if (t > 0) action_completion_percent = Math.round((c / t) * 100);
-    } catch (e) { }
-
-
-
-    const getTrend = async (table) => {
-      try {
-        const res = await pool.query(`
-             SELECT EXTRACT(MONTH FROM updated_at)::INT as m, COUNT(*) as c
-             FROM ${table}
-             WHERE EXTRACT(YEAR FROM updated_at) = $1
-             GROUP BY m
-             ORDER BY m ASC
-           `, [selectedYear]);
-
-
-        const counts = [];
-        for (let i = 1; i <= 12; i++) {
-          const found = res.rows.find(r => r.m === i);
-          counts.push({ value: found ? Number(found.c) : 0 });
-        }
-        return counts;
-      } catch { return Array(12).fill({ value: 0 }); }
+      return filters;
     };
 
-    const trend_escalations = await getTrend('escalations');
+    // Helper for Union
+    const getUnionData = (tables) => {
+       const parts = [];
+       const allParams = [];
+       let offset = 0;
+       tables.forEach(t => {
+          const f = buildFilters(t);
+          let wh = f.where;
+          f.params.forEach((p, idx) => {
+             wh = wh.replace(new RegExp(`\\$${idx+1}(?![0-9])`, 'g'), `$${idx+1+offset}`);
+          });
+          parts.push(`SELECT id, status, priority, updated_at, created_at FROM ${t} ${wh}`);
+          allParams.push(...f.params);
+          offset += f.params.length;
+       });
+       return { sql: parts.join(" UNION ALL "), params: allParams };
+    };
 
+    const g = getUnionData(['risks', 'issues', 'actions', 'dependencies', 'escalations']);
+    const commonQ = `SELECT COUNT(*) FROM (${g.sql}) t`;
 
-    let trend_closed = [];
-    try {
+    const [total_open, total_on_hold, resolved, approved, cancelled, total_items] = await Promise.all([
+      safeCount(`${commonQ} WHERE status = 'Open'`, g.params),
+      safeCount(`${commonQ} WHERE status IN ('In Progress', 'On Hold')`, g.params),
+      safeCount(`${commonQ} WHERE status = 'Resolved'`, g.params),
+      safeCount(`${commonQ} WHERE status = 'Approved & Closed'`, g.params),
+      safeCount(`${commonQ} WHERE status = 'Cancelled'`, g.params),
+      safeCount(commonQ, g.params)
+    ]);
 
-
-      const res = await pool.query(`
-        SELECT EXTRACT(MONTH FROM updated_at)::INT as m, COUNT(*) as c
-        FROM (
-          SELECT updated_at FROM risks WHERE status IN ('Resolved', 'Approved & Closed', 'Cancelled')
-          UNION ALL SELECT updated_at FROM issues WHERE status IN ('Resolved', 'Approved & Closed', 'Cancelled')
-          UNION ALL SELECT updated_at FROM actions WHERE status IN ('Resolved', 'Approved & Closed', 'Cancelled')
-          UNION ALL SELECT updated_at FROM dependencies WHERE status IN ('Resolved', 'Approved & Closed', 'Cancelled')
-          UNION ALL SELECT updated_at FROM escalations WHERE status IN ('Resolved', 'Approved & Closed', 'Cancelled')
-        ) as t
-        WHERE EXTRACT(YEAR FROM updated_at) = $1
-        GROUP BY m
-        ORDER BY m ASC
-      `, [selectedYear]);
-
-      const counts = [];
-      for (let i = 1; i <= 12; i++) {
-        const found = res.rows.find(r => r.m === i);
-        counts.push({ value: found ? Number(found.c) : 0 });
-      }
-      trend_closed = counts;
-
-    } catch (e) {
-      console.error("Trend closed error", e);
-      trend_closed = Array(12).fill({ value: 0 });
+    // Priority Data
+    const priority_split = (await pool.query(`SELECT priority, COUNT(*)::INT as count FROM (${g.sql}) t WHERE priority IS NOT NULL GROUP BY 1`, g.params)).rows;
+    
+    const priority_by_module = {};
+    for (const t of ['risks', 'issues', 'actions', 'dependencies', 'escalations']) {
+       const f = buildFilters(t);
+       const res = await pool.query(`SELECT priority::text, COUNT(*)::INT as count FROM ${t} ${f.where} AND priority IS NOT NULL GROUP BY 1`, f.params);
+       const counts = { Critical: 0, High: 0, Medium: 0, Low: 0 };
+       res.rows.forEach(r => { if (counts.hasOwnProperty(r.priority)) counts[r.priority] = r.count; });
+       const nameMap = { risks: 'Risk', issues: 'Issue', dependencies: 'Dependency', actions: 'Action', escalations: 'Escalation' };
+       priority_by_module[nameMap[t] || t] = counts;
     }
 
+    // Trends
+    const getTrend = async (dateField, tableFilterSql = "", tableParams = []) => {
+       const trendParams = [...tableParams];
+       const yearIdx = trendParams.push(selectedYear);
+       try {
+         const res = await pool.query(`
+            SELECT EXTRACT(MONTH FROM ${dateField})::INT as m, COUNT(*)::INT as c
+            FROM (${tableFilterSql}) t
+            WHERE EXTRACT(YEAR FROM ${dateField})::int = $${yearIdx}::int
+            GROUP BY 1 ORDER BY 1
+         `, trendParams);
+         const trend = Array(12).fill(0).map((_, i) => ({ value: 0 }));
+         res.rows.forEach(r => { if (trend[r.m-1]) trend[r.m-1].value = r.c; });
+         return trend;
+       } catch (e) { return Array(12).fill({ value: 0 }); }
+    };
 
-    let trend_created = [];
-    try {
+    const trend_created = await getTrend('created_at', g.sql, g.params);
+    const trend_closed = await getTrend('updated_at', `SELECT * FROM (${g.sql}) g2 WHERE status IN ('Resolved', 'Approved & Closed', 'Cancelled')`, g.params);
+    
+    const escF = buildFilters('escalations');
+    const trend_escalations = await getTrend('created_at', `SELECT created_at FROM escalations ${escF.where}`, escF.params);
+
+    // Monthly Risks (Engagement Trend)
+    const monthlyF = buildFilters('risks');
+    const ryIdx = monthlyF.params.push(riskYear);
+    const monthly_risk_trend_res = await pool.query(`
+       SELECT TO_CHAR(created_at, 'Mon') as month_label, COUNT(*)::INT as c FROM risks ${monthlyF.where} AND EXTRACT(YEAR FROM created_at)::int = $${ryIdx}::int GROUP BY 1, EXTRACT(MONTH FROM created_at) ORDER BY EXTRACT(MONTH FROM created_at)
+    `, monthlyF.params);
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const monthly_risk_trend = months.map(m => ({
+       month: m, count: monthly_risk_trend_res.rows.find(r => r.month_label === m)?.c || 0
+    }));
+
+    // Feeds
+    const latest_risks = (await pool.query(`SELECT risk_id, risk_title, priority, status, account, identified_date, updated_at FROM risks ${buildFilters('risks').where} ORDER BY updated_at DESC LIMIT 10`, buildFilters('risks').params)).rows;
+    const latest_issues = (await pool.query(`SELECT issue_id, issue_title, priority, status, account, reported_date as identified_date, updated_at FROM issues ${buildFilters('issues').where} ORDER BY updated_at DESC LIMIT 10`, buildFilters('issues').params)).rows;
+    const latest_actions = (await pool.query(`SELECT action_id, action_title, priority, status, updated_at FROM actions ${buildFilters('actions').where} ORDER BY updated_at DESC LIMIT 10`, buildFilters('actions').params)).rows;
+    const latest_dependencies = (await pool.query(`SELECT dependency_id, dependency_title, priority, status, updated_at FROM dependencies ${buildFilters('dependencies').where} ORDER BY updated_at DESC LIMIT 10`, buildFilters('dependencies').params)).rows;
+
+    // Status Table
+    const module_status = [];
+    for (const t of ['risks', 'issues', 'dependencies', 'actions', 'escalations']) {
+      const f = buildFilters(t);
       const res = await pool.query(`
-        SELECT EXTRACT(MONTH FROM created_date)::INT as m, COUNT(*) as c
-        FROM (
-          SELECT identified_date as created_date FROM risks WHERE identified_date IS NOT NULL
-          UNION ALL SELECT reported_date as created_date FROM issues WHERE reported_date IS NOT NULL
-          UNION ALL SELECT created_date FROM actions WHERE created_date IS NOT NULL
-          UNION ALL SELECT reported_date as created_date FROM dependencies WHERE reported_date IS NOT NULL
-          UNION ALL SELECT reported_date as created_date FROM escalations WHERE reported_date IS NOT NULL
-        ) as t
-        WHERE EXTRACT(YEAR FROM created_date) = $1
-        GROUP BY m
-        ORDER BY m ASC
-      `, [selectedYear]);
+        SELECT 
+           SUM(CASE WHEN status ILIKE '%open%' OR status = 'Open' THEN 1 ELSE 0 END)::INT as o, 
+           SUM(CASE WHEN status ILIKE '%submitted%' OR status ILIKE '%closure%' THEN 1 ELSE 0 END)::INT as cs,
+           SUM(CASE WHEN status ILIKE '%closed%' OR status ILIKE '%resolved%' OR status ILIKE '%approved%' OR status ILIKE '%acknowledged%' THEN 1 ELSE 0 END)::INT as ca,
+           SUM(CASE WHEN status ILIKE '%hold%' THEN 1 ELSE 0 END)::INT as h
+        FROM ${t} ${f.where}`, f.params);
+      const o = res.rows[0].o || 0;
+      const cs = res.rows[0].cs || 0;
+      const ca = res.rows[0].ca || 0;
+      const h = res.rows[0].h || 0;
+      module_status.push({ 
+        module: { risks: 'Risk', issues: 'Issue', dependencies: 'Dependency', actions: 'Action', escalations: 'Escalation' }[t], 
+        Open: o, 
+        ClosureSubmitted: cs,
+        ClosedAcknowledged: ca,
+        Hold: h,
+        Resolved: ca,
+        total: o + cs + ca + h
+      });
+    }
 
-      const counts = [];
-      for (let i = 1; i <= 12; i++) {
-        const found = res.rows.find(r => r.m === i);
-        counts.push({ value: found ? Number(found.c) : 0 });
-      }
-      trend_created = counts;
-    } catch (e) {
-      console.error("Trend created error", e);
-      trend_created = Array(12).fill({ value: 0 });
+    // Actions by Responsible
+    const actF = buildFilters('actions');
+    const actRespCountsRes = await pool.query(`
+      SELECT action_owner as responsible, COUNT(*)::INT as count 
+      FROM actions 
+      ${actF.where} AND action_owner IS NOT NULL AND TRIM(action_owner) != '' 
+      GROUP BY 1 
+      ORDER BY count DESC 
+      LIMIT 7
+    `, actF.params);
+    const action_responsible_counts = actRespCountsRes.rows;
+
+    // Get the details for these top responsible people
+    const topRespNames = action_responsible_counts.map(r => r.responsible);
+    let action_responsible_details = [];
+    if (topRespNames.length > 0) {
+      const actDetailsFParams = [...actF.params];
+      const namePlaceholders = topRespNames.map((_, i) => `$${actDetailsFParams.length + i + 1}`);
+      actDetailsFParams.push(...topRespNames);
+      
+      const sql = `
+        SELECT action_owner as responsible, action_id, action_title, status, priority, due_date 
+        FROM actions 
+        ${actF.where} AND action_owner IN (${namePlaceholders.join(', ')})
+      `;
+      const actDetailsRes = await pool.query(sql, actDetailsFParams);
+      action_responsible_details = actDetailsRes.rows.map(r => ({ ...r, target_date: r.due_date }));
     }
 
     return res.json({
-      total_open: total_open,
-      total_on_hold: total_on_hold,
-      resolved: resolved,
-      approved: approved,
-      cancelled: cancelled,
-      total_items,
-      priority_split: prioritySplit,
-      priority_by_module,
-      monthly_risk_trend,
-      available_years,
-      selected_year: selectedYear,
-      trend_closed,
-      trend_created,
-      trend_escalations,
-      action_completion_percent,
-      weekly_action_status,
-      available_action_weeks,
-      selected_action_week: selectedWeek,
-      module_status,
-      latest_risks,
-      latest_issues,
-      latest_dependencies,
-      latest_issues,
-      latest_dependencies,
-      latest_actions,
-      top_priority_items
+      success: true,
+      total_open, total_on_hold, resolved, approved, cancelled, total_items,
+      priority_split, priority_by_module, monthly_risk_trend,
+      trend_created, trend_closed, trend_escalations,
+      latest_risks, latest_issues, latest_actions, latest_dependencies,
+      module_status, available_years: [2026, 2025, 2024],
+      action_completion_percent: Math.round((resolved + approved + cancelled) / (total_items || 1) * 100),
+      action_responsible_counts,
+      action_responsible_details
     });
 
   } catch (err) {
-    console.error('DASHBOARD METRICS ERROR:', err);
-    return res.status(500).json({ error: 'metrics_fetch_failed', message: err.message });
+    console.error('DASHBOARD ERROR:', err);
+    return res.status(500).json({ error: 'failed' });
   }
 }

@@ -23,11 +23,14 @@ const tableConfig = {
   actions: {
     columns: [
       { key: "action_id", label: "Action ID" },
-      { key: "account", label: "Account" },
-      { key: "status", label: "Status" },
+      { key: "action_item", label: "Action Item" },
       { key: "priority", label: "Priority" },
-      { key: "action_title", label: "Title" },
-      { key: "due_date", label: "Due Date" },
+      { key: "target_date", label: "Target Date" },
+      { key: "status", label: "Status" },
+      { key: "responsible", label: "Responsible" },
+      { key: "support_required_from", label: "Support Required From" },
+      { key: "teams_involved", label: "Teams Involved" },
+      { key: "remarks", label: "Remarks" },
     ],
   },
   dependencies: {

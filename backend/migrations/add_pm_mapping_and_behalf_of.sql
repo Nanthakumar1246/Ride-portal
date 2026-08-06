@@ -1,0 +1,25 @@
+-- Task 5: Headed By / Program Manager mapping columns
+-- Task 6: Behalf Of field
+ALTER TABLE risks ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
+ALTER TABLE risks ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);
+ALTER TABLE risks ADD COLUMN IF NOT EXISTS behalf_of VARCHAR(255);
+
+ALTER TABLE issues ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
+ALTER TABLE issues ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);
+ALTER TABLE issues ADD COLUMN IF NOT EXISTS behalf_of VARCHAR(255);
+
+ALTER TABLE dependencies ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
+ALTER TABLE dependencies ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);
+ALTER TABLE dependencies ADD COLUMN IF NOT EXISTS behalf_of VARCHAR(255);
+
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);
+ALTER TABLE escalations ADD COLUMN IF NOT EXISTS behalf_of VARCHAR(255);
+
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);
+ALTER TABLE actions ADD COLUMN IF NOT EXISTS behalf_of VARCHAR(255);
+
+ALTER TABLE appreciations ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
+ALTER TABLE appreciations ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);
+ALTER TABLE appreciations ADD COLUMN IF NOT EXISTS behalf_of VARCHAR(255);

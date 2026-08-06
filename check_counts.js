@@ -1,5 +1,4 @@
 import pool from "./backend/db.js";
-
 async function checkCounts() {
     try {
         const res = await pool.query("SELECT COUNT(*) FROM risks");
@@ -10,7 +9,6 @@ async function checkCounts() {
 
         const emptyProj = await pool.query("SELECT COUNT(*) FROM risks WHERE manual_project_id = ''");
         console.log("Risks with empty manual_project_id:", emptyProj.rows[0].count);
-
         process.exit(0);
     } catch (err) {
         console.error(err);

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { searchProjects } from '../api/projectsApi';
 import './ProjectSearchInput.css'; 
 
-const ProjectSearchInput = ({ value, onChange, onSelect, placeholder, required, className }) => {
+const ProjectSearchInput = ({ value, onChange, onSelect, placeholder, required, className, onFocus, onBlur }) => {
     const [query, setQuery] = useState(value || '');
     const [results, setResults] = useState([]);
     const [showDropdown, setShowDropdown] = useState(false);
@@ -47,7 +47,7 @@ const ProjectSearchInput = ({ value, onChange, onSelect, placeholder, required, 
     };
 
     const handleSelect = (project) => {
-        setQuery(project.name);
+        setQuery(project.manual_project_id || project.name);
         setShowDropdown(false);
         onSelect(project);
     };
@@ -61,6 +61,8 @@ const ProjectSearchInput = ({ value, onChange, onSelect, placeholder, required, 
                 onChange={(e) => handleSearch(e.target.value)}
                 placeholder={placeholder || "Search Project ID..."}
                 required={required}
+                onFocus={onFocus}
+                onBlur={onBlur}
             />
             {showDropdown && (
                 <ul className="project-search-results">
@@ -68,8 +70,14 @@ const ProjectSearchInput = ({ value, onChange, onSelect, placeholder, required, 
                         <li className="search-loading">Loading...</li>
                     ) : results.length > 0 ? (
                         results.map((project) => (
-                            <li key={project.id} onClick={() => handleSelect(project)}>
-                                <strong>{project.name}</strong> - {project.description}
+                            <li key={project.id || project.manual_project_id || project.name} onClick={() => handleSelect(project)}>
+                                <div className="font-bold text-indigo-700">{project.manual_project_id || project.name}</div>
+                                <div className="text-xs text-gray-700">{project.project_description || project.description}</div>
+                                <div className="text-[11px] text-gray-500 flex items-center gap-2 mt-0.5">
+                                    <span>Account: <strong>{project.account || "N/A"}</strong></span>
+                                    <span>• PM: <strong>{project.project_manager || "N/A"}</strong></span>
+                                    <span>• Headed By: <strong>{project.program_manager || "N/A"}</strong></span>
+                                </div>
                             </li>
                         ))
                     ) : (

@@ -26,6 +26,20 @@ export async function createUser({ name, email, password_hash, role }) {
 }
 
 
+export async function findUsersByNames(names) {
+  const cleanNames = (names || []).map((n) => String(n || "").trim()).filter(Boolean);
+  if (cleanNames.length === 0) return [];
+
+  const result = await db.query(
+    `SELECT name, email
+     FROM users
+     WHERE LOWER(TRIM(name)) = ANY($1::text[])`,
+    [cleanNames.map((n) => n.toLowerCase())]
+  );
+  return result.rows;
+}
+
+
 export async function listAllUsers() {
   const result = await db.query(
     `SELECT id, name, email, role, is_active, created_at
@@ -84,4 +98,19 @@ export async function updatePassword(userId, newPasswordHash) {
     [newPasswordHash, userId]
   );
   return result.rows[0];
+}
+
+export async function saveOtp(userId, otp, mobileNumber) {
+  const expiresAt = new Date(Date.now() + 10 * 60000); // 10 mins expiry
+  await db.query(
+    `UPDATE users SET reset_otp = $1, reset_otp_expires_at = $2, mobile_number = $3 WHERE id = $4`,
+    [otp, expiresAt, mobileNumber, userId]
+  );
+}
+
+export async function clearOtp(userId) {
+  await db.query(
+    `UPDATE users SET reset_otp = NULL, reset_otp_expires_at = NULL WHERE id = $1`,
+    [userId]
+  );
 }
