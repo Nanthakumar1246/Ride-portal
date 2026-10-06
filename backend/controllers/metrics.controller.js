@@ -1,5 +1,6 @@
 
 import pool from "../db.js";
+import { buildPmCreatorAndClause } from "../utils/filters.utils.js";
 
 export async function getSummaryMetrics(req, res) {
   try {
@@ -102,39 +103,35 @@ export async function getNearingTat(req, res) {
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const offset = req.query.offset !== undefined ? Math.max(0, parseInt(req.query.offset) || 0) : (page - 1) * limit;
 
-    const pmName = req.user?.role === "PM" ? req.user.name : null;
     const params = [];
-    const pmClause = () => {
-      if (!pmName) return "";
-      params.push(pmName);
-      return ` AND project_manager::text = $${params.length}::text`;
-    };
+    // Each union arm needs its own param copies for PM creator scope.
+    const pmFor = (table) => buildPmCreatorAndClause(table, req.user, params);
 
     const unionSql = `
       SELECT 'Risk' as module, id, risk_id as item_id, risk_title as title, account,
         manual_project_id, priority, status, mitigation_owner as owner,
         target_mitigation_date as due_date, updated_at
-      FROM risks WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmClause()}
+      FROM risks WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmFor("risks")}
       UNION ALL
       SELECT 'Issue', id, issue_id, issue_title, account,
         manual_project_id, priority, status, assigned_to,
         target_resolution_date, updated_at
-      FROM issues WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmClause()}
+      FROM issues WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmFor("issues")}
       UNION ALL
       SELECT 'Dependency', id, dependency_id, dependency_title, account,
         manual_project_id, priority, status, contact_person,
         required_by_date, updated_at
-      FROM dependencies WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmClause()}
+      FROM dependencies WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmFor("dependencies")}
       UNION ALL
       SELECT 'Escalation', id, escalation_id, title, account,
         manual_project_id, priority, status, escalated_to,
         target_resolution_date, updated_at
-      FROM escalations WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmClause()}
+      FROM escalations WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmFor("escalations")}
       UNION ALL
       SELECT 'Action', id, action_id, action_title, NULL::text as account,
         NULL::text as manual_project_id, priority, status, action_owner,
         due_date, updated_at
-      FROM actions WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmClause()}
+      FROM actions WHERE status NOT IN ('Resolved', 'Cancelled', 'Approved & Closed')${pmFor("actions")}
     `;
 
     const countRes = await pool.query(`SELECT COUNT(*) AS c FROM (${unionSql}) t`, params);
@@ -165,27 +162,23 @@ export async function getPrioritySplit(req, res) {
   try {
     const { module } = req.query;
     const cleanModule = (module || "all").toLowerCase();
-    const pmName = req.user?.role === "PM" ? req.user.name : null;
-    const params = pmName ? [pmName] : [];
 
     let sql = "";
+    let params = [];
 
     if (cleanModule === "all") {
-      const pmFilter = pmName ? "WHERE project_manager = $1" : "";
+      const arms = [];
+      for (const table of ["risks", "issues", "dependencies", "escalations", "actions"]) {
+        const clause = buildPmCreatorAndClause(table, req.user, params);
+        // clause starts with " AND" — convert for WHERE
+        const where = clause ? `WHERE 1=1${clause}` : "";
+        arms.push(`SELECT priority FROM ${table} ${where}`);
+      }
       sql = `
           SELECT priority, COUNT(*)::int as count
           FROM (
-            SELECT priority, project_manager FROM risks
-            UNION ALL
-            SELECT priority, project_manager FROM issues
-            UNION ALL
-            SELECT priority, project_manager FROM dependencies
-            UNION ALL
-            SELECT priority, project_manager FROM escalations
-            UNION ALL
-            SELECT priority, project_manager FROM actions
+            ${arms.join(" UNION ALL ")}
           ) all_items
-          ${pmFilter}
           GROUP BY priority
         `;
     } else {
@@ -199,11 +192,12 @@ export async function getPrioritySplit(req, res) {
         default: return res.status(400).json({ success: false, message: "Invalid module" });
       }
 
-      const pmFilter = pmName ? "WHERE project_manager = $1" : "";
+      const clause = buildPmCreatorAndClause(table, req.user, params);
+      const where = clause ? `WHERE 1=1${clause}` : "";
       sql = `
           SELECT priority, COUNT(*)::int as count
           FROM ${table}
-          ${pmFilter}
+          ${where}
           GROUP BY priority
         `;
     }

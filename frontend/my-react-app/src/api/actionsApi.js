@@ -47,13 +47,15 @@ export async function createActionApi(payload) {
 }
 
 export async function updateActionApi(id, payload) {
+  // A status update that carries a file arrives as FormData; the browser must
+  // set its own multipart boundary, so the JSON Content-Type is omitted.
+  const isFormData = typeof FormData !== "undefined" && payload instanceof FormData;
   const res = await fetch(`${BASE_URL}/actions/${id}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify(sanitizeStatus(payload)),
+    headers: isFormData
+      ? { ...authHeaders() }
+      : { "Content-Type": "application/json", ...authHeaders() },
+    body: isFormData ? payload : JSON.stringify(sanitizeStatus(payload)),
 
   });
   return handleResponse(res);

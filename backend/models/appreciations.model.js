@@ -8,6 +8,7 @@ export async function findAppreciations({ whereSql = "", params = [] } = {}) {
     SELECT
       a.id,
       a.appreciation_id,
+      COALESCE(a.appreciation_scope, 'Internal Appreciation') AS appreciation_scope,
       a.manual_project_id,
       a.project_id,
       a.project_description,
@@ -31,6 +32,9 @@ export async function findAppreciations({ whereSql = "", params = [] } = {}) {
       a.project_manager,
       a.program_manager,
       a.behalf_of,
+      a.status,
+      a.approved_by,
+      a.approved_at,
       a.created_at,
       a.updated_at
     FROM appreciations a
@@ -48,6 +52,7 @@ export async function findAppreciationById(id) {
     SELECT
       a.id,
       a.appreciation_id,
+      COALESCE(a.appreciation_scope, 'Internal Appreciation') AS appreciation_scope,
       a.manual_project_id,
       a.project_id,
       a.project_description,
@@ -71,6 +76,9 @@ export async function findAppreciationById(id) {
       a.project_manager,
       a.program_manager,
       a.behalf_of,
+      a.status,
+      a.approved_by,
+      a.approved_at,
       a.created_at,
       a.updated_at
     FROM appreciations a
@@ -85,6 +93,7 @@ export async function createAppreciation(data) {
   const sql = `
    INSERT INTO appreciations (
   appreciation_id,
+  appreciation_scope,
   manual_project_id,
   project_id,
   project_description,
@@ -103,9 +112,11 @@ export async function createAppreciation(data) {
   comments,
   project_manager,
   program_manager,
-  behalf_of
+  behalf_of,
+  status
 ) VALUES (
   $1::text,
+  $20::text,
   $16::text,
   $2::uuid,
   $3::text,
@@ -124,7 +135,8 @@ export async function createAppreciation(data) {
   $15::text,
   $17::text,
   $18::text,
-  $19::text
+  $19::text,
+  $21::text
 )
 RETURNING *,
   CASE
@@ -155,9 +167,29 @@ RETURNING *,
     data.project_manager || null,
     data.program_manager || null,
     data.behalf_of || null,
+    data.appreciation_scope || "Internal Appreciation",
+    data.status || "PENDING",
   ];
 
   const { rows } = await pool.query(sql, params);
+  return rows[0];
+}
+
+/**
+ * Admin approval decision. `status` is "APPROVED" or "REJECTED".
+ */
+export async function decideAppreciation(id, { status, approvedBy }) {
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-5][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+  const sql = `
+    UPDATE appreciations
+    SET status = $1::text,
+        approved_by = $2::text,
+        approved_at = now(),
+        updated_at = now()
+    WHERE ${isUuid ? "id" : "appreciation_id"} = $3
+    RETURNING *;
+  `;
+  const { rows } = await pool.query(sql, [status, approvedBy || null, id]);
   return rows[0];
 }
 
@@ -166,6 +198,7 @@ export async function updateAppreciation(id, data) {
   const sql = `
     UPDATE appreciations SET
       appreciation_id = $1::text,
+      appreciation_scope = $21::text,
       manual_project_id = $16::text,
       project_id = $2::uuid,
       project_description = $3::text,
@@ -216,6 +249,7 @@ export async function updateAppreciation(id, data) {
     data.project_manager || null,
     data.program_manager || null,
     data.behalf_of || null,
+    data.appreciation_scope || "Internal Appreciation",
   ];
 
   const { rows } = await pool.query(sql, params);

@@ -1,17 +1,44 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
-import { fetchAppreciations, createAppreciationApi, uploadAppreciationAttachmentApi } from "../api/appreciationsApi";
+import {
+  fetchAppreciations,
+  createAppreciationApi,
+  uploadAppreciationAttachmentApi,
+  decideAppreciationApi,
+} from "../api/appreciationsApi";
 import { formatDateOnly } from "../utils/dateFormat";
 import useMonitoringExport from "../hooks/useMonitoringExport";
 import { appreciationsFormConfig } from "../config/formConfig";
-import { DownloadSimple, Heart, Paperclip, CheckCircle, ArrowClockwise, Sparkle, UserPlus } from "phosphor-react";
+import { DownloadSimple, Heart, Paperclip, CheckCircle, ArrowClockwise, Sparkle, UserPlus, Star } from "phosphor-react";
 import { FiList, FiPlusCircle, FiSearch, FiRotateCcw, FiSave, FiSend } from "react-icons/fi";
-import TruncatedCell from "../components/TruncatedCell";
+import Pagination from "../components/Pagination";
 import { exportToExcel } from "../utils/exportToExcel";
 import { searchProjects, fetchProgramManagers } from "../api/projectsApi";
 import { useAuth } from "../context/AuthContext";
 
 const ARCHE_EMAIL_REGEX = /^[^\s@]+@arche\.global$/i;
+
+const API_ORIGIN = (process.env.REACT_APP_API_URL || "http://localhost:5000").replace(/\/api\/?$/, "");
+
+const resolveUploadUrl = (path) => {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  // Normalize absolute Windows/Unix paths down to uploads/...
+  const normalized = String(path).replace(/\\/g, "/");
+  const uploadsIdx = normalized.toLowerCase().lastIndexOf("uploads/");
+  const relative = uploadsIdx >= 0 ? normalized.slice(uploadsIdx) : normalized.replace(/^\//, "");
+  return `${API_ORIGIN}/${relative}`;
+};
+
+const getAppreciationPhotoUrl = (row) => {
+  if (!row) return null;
+  if (row.image_url) return resolveUploadUrl(row.image_url);
+  const path = row.attachment_url || "";
+  if (/\.(png|jpe?g|webp|gif)$/i.test(path) || String(row.file_type || "").startsWith("image/")) {
+    return resolveUploadUrl(path);
+  }
+  return null;
+};
 
 const generateAppreciationId = () => {
   const num = Math.floor(1000 + Math.random() * 9000);
@@ -27,8 +54,84 @@ const getInitials = (name) => {
   return String(name).slice(0, 2).toUpperCase();
 };
 
+/* Round-avatar recognition card — name-first layout (photo/initials, star
+   rating, centered team name, Account · Project, date, and a quote). */
+const AppreciationTile = ({ item, idx, onOpen }) => {
+  const photoUrl = getAppreciationPhotoUrl(item);
+  const team = item.team_members_recognized || "—";
+  const displayName = team !== "—" ? team.split(/[,;]/)[0].trim() : (item.recorded_by || "Team Member");
+  const account = item.account || item.customer_name || "—";
+  const project = item.project_description || item.manual_project_id || "";
+  const initials = getInitials(team !== "—" ? team : item.recorded_by);
+  const quote = item.subject || item.details || "";
+  const dateStr = item.received_date || item.created_at;
+  const status = String(item.status || "").toUpperCase();
+
+  return (
+    <button
+      key={item.id || idx}
+      type="button"
+      onClick={() => onOpen(item)}
+      className="relative text-left bg-white rounded-2xl border border-gray-200 shadow-sm p-5 flex flex-col items-center hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-rose-400"
+    >
+      {/* Only a not-yet-approved appreciation is badged; an approved one is
+          simply on display. */}
+      {status && status !== "APPROVED" && (
+        <span
+          className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wide ${
+            status === "REJECTED" ? "bg-gray-200 text-gray-600" : "bg-amber-100 text-amber-700"
+          }`}
+        >
+          {status === "REJECTED" ? "Rejected" : "Pending Approval"}
+        </span>
+      )}
+
+      {photoUrl ? (
+        <img
+          src={photoUrl}
+          alt={displayName}
+          className="w-16 h-16 rounded-full object-cover border-4 border-white shadow-md"
+          onError={(e) => { e.currentTarget.style.display = "none"; }}
+        />
+      ) : (
+        <div className="w-16 h-16 rounded-full bg-rose-400 text-white font-black text-lg flex items-center justify-center shadow-md">
+          {initials}
+        </div>
+      )}
+
+      <div className="flex items-center gap-0.5 mt-3">
+        {[...Array(5)].map((_, i) => (
+          <Star key={i} size={13} weight="fill" className="text-rose-400" />
+        ))}
+      </div>
+
+      <p className="text-sm font-black text-gray-900 mt-1.5 text-center truncate max-w-full" title={displayName}>
+        {displayName}
+      </p>
+      <p className="text-[11px] font-semibold text-gray-400 text-center truncate max-w-full">
+        {account}{project ? ` · ${project}` : ""}
+      </p>
+      {dateStr && (
+        <p className="text-[10px] font-bold text-gray-300 uppercase tracking-wider mt-0.5">
+          {formatDateOnly(dateStr)}
+        </p>
+      )}
+
+      {quote && (
+        <div className="mt-3 w-full rounded-lg bg-rose-50 px-3 py-2.5 text-center">
+          <p className="text-xs text-gray-700 leading-snug line-clamp-3">{quote}</p>
+        </div>
+      )}
+    </button>
+  );
+};
+
 const MonitoringAppreciationsPage = () => {
   const { user } = useAuth();
+  const isAdmin = String(user?.role || "").toUpperCase() === "ADMIN";
+  // "Behalf Of" is only shown to an admin, and is optional for them.
+  const showBehalfOf = isAdmin;
+  const [decidingId, setDecidingId] = useState(null);
   const [activeTab, setActiveTab] = useState("view"); // "view" | "create"
   const [rows, setRows] = useState([]);
   const [allRows, setAllRows] = useState([]);
@@ -42,12 +145,14 @@ const MonitoringAppreciationsPage = () => {
   const [projectsList, setProjectsList] = useState([]);
 
   // Filter states
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
   const [filters, setFilters] = useState({
     appreciation_type: "",
-    shared_with: "",
-    account: "",
+    scope: "all", // "all" | "internal" | "external"
   });
   const [globalSearch, setGlobalSearch] = useState("");
+  const [detailRow, setDetailRow] = useState(null);
 
   // Create Form State
   const [createForm, setCreateForm] = useState({
@@ -67,7 +172,6 @@ const MonitoringAppreciationsPage = () => {
     customer_contact: "",
     appreciation_type: "Email",
     team_members_recognized: "",
-    shared_with_team: "Yes",
     follow_up_action: "",
   });
   const [pendingAttachment, setPendingAttachment] = useState(null);
@@ -108,22 +212,19 @@ const MonitoringAppreciationsPage = () => {
   const applyFiltersAndSearch = useCallback((data) => {
     let filtered = [...data];
 
+    if (filters.scope === "internal") {
+      filtered = filtered.filter((row) =>
+        String(row.appreciation_scope || "Internal").toLowerCase().includes("internal")
+      );
+    } else if (filters.scope === "external") {
+      filtered = filtered.filter((row) =>
+        String(row.appreciation_scope || "").toLowerCase().includes("external")
+      );
+    }
+
     if (filters.appreciation_type) {
       filtered = filtered.filter(
         (row) => String(row.appreciation_type || "").toLowerCase() === String(filters.appreciation_type).toLowerCase()
-      );
-    }
-
-    if (filters.shared_with) {
-      filtered = filtered.filter(
-        (row) => String(row.shared_with_team || row.shared_with || "").toLowerCase() === String(filters.shared_with).toLowerCase()
-      );
-    }
-
-    if (filters.account?.trim()) {
-      const pName = filters.account.trim().toLowerCase();
-      filtered = filtered.filter((row) =>
-        String(row.account || row.customer_name || "").toLowerCase().includes(pName)
       );
     }
 
@@ -162,7 +263,30 @@ const MonitoringAppreciationsPage = () => {
 
   useEffect(() => {
     if (allRows.length > 0) applyFiltersAndSearch(allRows);
+    setCurrentPage(1);
   }, [filters, globalSearch, allRows, applyFiltersAndSearch]);
+
+  // Awaiting approval. The server only returns these to an admin (who actions
+  // them) or to the person who submitted them (who is tracking them).
+  const pendingRows = allRows.filter((r) => String(r.status || "").toUpperCase() === "PENDING");
+
+  const handleDecideAppreciation = async (row, decision) => {
+    try {
+      setDecidingId(row.id);
+      await decideAppreciationApi(row.id, decision);
+      triggerToast(
+        decision === "APPROVED"
+          ? "✅ Appreciation approved — it is now visible to everyone"
+          : "Appreciation rejected"
+      );
+      await loadData();
+    } catch (err) {
+      console.error("Failed to record the approval decision", err);
+      triggerToast("❌ Could not record the decision");
+    } finally {
+      setDecidingId(null);
+    }
+  };
 
   useMonitoringExport("appreciations", rows);
 
@@ -245,7 +369,6 @@ const MonitoringAppreciationsPage = () => {
         customer_contact: "",
         appreciation_type: "Email",
         team_members_recognized: "",
-        shared_with_team: "Yes",
         follow_up_action: "",
       });
       setPendingAttachment(null);
@@ -321,8 +444,77 @@ const MonitoringAppreciationsPage = () => {
       {/* TAB 1: VIEW TAB */}
       {activeTab === "view" && (
         <div className="flex flex-col gap-4">
+          {/* ── Approval queue: an appreciation submitted by anyone other than
+                 an admin stays hidden until an admin approves it here. ── */}
+          {isAdmin && pendingRows.length > 0 && (
+            <div className="bg-white rounded-xl border border-amber-300 shadow-sm overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-amber-50 border-b border-amber-200">
+                <div>
+                  <h3 className="text-sm font-extrabold text-amber-900 tracking-tight">Pending Approval</h3>
+                  <p className="text-[11px] font-semibold text-amber-700 mt-0.5">
+                    {pendingRows.length} submitted {pendingRows.length === 1 ? "appreciation is" : "appreciations are"} waiting
+                    for your review — they stay hidden from everyone until approved.
+                  </p>
+                </div>
+                <span className="px-2.5 py-1 rounded-full bg-amber-500 text-white text-xs font-black">
+                  {pendingRows.length}
+                </span>
+              </div>
+
+              <div className="divide-y divide-gray-100 max-h-80 overflow-y-auto">
+                {pendingRows.map((row) => (
+                  <div key={row.id} className="flex flex-col sm:flex-row sm:items-center gap-3 px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setDetailRow(row)}
+                      className="flex-1 text-left min-w-0"
+                      title="View full details"
+                    >
+                      <p className="text-xs font-black text-gray-900 truncate">
+                        {row.subject || "Appreciation"}
+                      </p>
+                      <p className="text-[11px] font-semibold text-gray-500 truncate">
+                        {row.appreciation_id} · {row.account || row.customer_name || "—"} · submitted by{" "}
+                        {row.recorded_by || "—"}
+                      </p>
+                    </button>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        disabled={decidingId === row.id}
+                        onClick={() => handleDecideAppreciation(row, "REJECTED")}
+                        className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white text-gray-700 text-[11px] font-black uppercase tracking-wide hover:bg-gray-100 disabled:opacity-50 transition"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        type="button"
+                        disabled={decidingId === row.id}
+                        onClick={() => handleDecideAppreciation(row, "APPROVED")}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-black uppercase tracking-wide hover:bg-emerald-700 disabled:opacity-50 transition"
+                      >
+                        Approve
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* A non-admin sees the state of their own submissions. */}
+          {!isAdmin && pendingRows.length > 0 && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+              <p className="text-xs font-bold text-amber-900">
+                {pendingRows.length} of your {pendingRows.length === 1 ? "appreciation is" : "appreciations are"} awaiting
+                admin approval — they become visible to everyone once approved.
+              </p>
+            </div>
+          )}
+
           {/* Summary Cards Strip */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
             <div className="bg-white rounded-xl border border-rose-200 p-3 shadow-sm flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase text-rose-500 tracking-wider">Total Appreciations</p>
@@ -337,7 +529,7 @@ const MonitoringAppreciationsPage = () => {
               <div>
                 <p className="text-[10px] font-black uppercase text-indigo-500 tracking-wider">Internal Appreciations</p>
                 <h3 className="text-2xl font-black text-indigo-600 mt-0.5">
-                  {allRows.filter(r => String(r.appreciation_scope || "").includes("Internal")).length || Math.ceil(allRows.length * 0.6)}
+                  {allRows.filter(r => String(r.appreciation_scope || "Internal").includes("Internal")).length}
                 </h3>
               </div>
               <div className="w-10 h-10 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-500 font-bold">
@@ -349,7 +541,7 @@ const MonitoringAppreciationsPage = () => {
               <div>
                 <p className="text-[10px] font-black uppercase text-emerald-500 tracking-wider">External Client Appreciations</p>
                 <h3 className="text-2xl font-black text-emerald-600 mt-0.5">
-                  {allRows.filter(r => String(r.appreciation_scope || "").includes("External")).length || Math.floor(allRows.length * 0.4)}
+                  {allRows.filter(r => String(r.appreciation_scope || "").includes("External")).length}
                 </h3>
               </div>
               <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500 font-bold">
@@ -357,175 +549,122 @@ const MonitoringAppreciationsPage = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-amber-200 p-3 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black uppercase text-amber-500 tracking-wider">Shared with Team</p>
-                <h3 className="text-2xl font-black text-amber-600 mt-0.5">
-                  {allRows.filter(r => String(r.shared_with_team || "").toLowerCase() === "yes").length}
-                </h3>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-amber-50 flex items-center justify-center text-amber-500 font-bold">
-                <CheckCircle size={20} weight="bold" />
-              </div>
-            </div>
+            
           </div>
 
-          {/* Filters Bar */}
-          <div className="w-full rounded-xl bg-white border border-gray-200 shadow-sm p-3 flex flex-col lg:flex-row gap-2 lg:items-center justify-between">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 flex-1">
-              <select
-                name="appreciation_type"
-                value={filters.appreciation_type}
-                onChange={(e) => setFilters((p) => ({ ...p, appreciation_type: e.target.value }))}
-                className="w-full rounded-lg border px-3 py-1.5 text-xs font-urbanist outline-none focus:border-rose-500"
-              >
-                <option value="">Appreciation Type (All)</option>
-                {["Email", "Call", "Meeting", "Formal Letter", "Survey Feedback", "Verbal"].map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+          {/* Filters Bar — single row */}
+          <div className="w-full rounded-xl bg-white border border-gray-200 shadow-sm px-2.5 py-2 flex flex-nowrap items-center gap-2 overflow-x-auto">
+            <select
+              name="appreciation_type"
+              value={filters.appreciation_type}
+              onChange={(e) => setFilters((p) => ({ ...p, appreciation_type: e.target.value }))}
+              className="shrink-0 w-40 rounded-md border px-2 py-1 text-[11px] font-urbanist outline-none focus:border-rose-500"
+            >
+              <option value="">Appreciation Type (All)</option>
+              {["Email", "Call", "Meeting", "Formal Letter", "Survey Feedback", "Verbal"].map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
 
-              <select
-                name="shared_with"
-                value={filters.shared_with}
-                onChange={(e) => setFilters((p) => ({ ...p, shared_with: e.target.value }))}
-                className="w-full rounded-lg border px-3 py-1.5 text-xs font-urbanist outline-none focus:border-rose-500"
-              >
-                <option value="">Shared With Team (All)</option>
-                <option value="Yes">Yes</option>
-                <option value="No">No</option>
-              </select>
-
+            <div className="relative w-28 shrink-0">
               <input
                 type="text"
-                name="account"
-                placeholder="Filter by Account / Customer..."
-                value={filters.account}
-                onChange={(e) => setFilters((p) => ({ ...p, account: e.target.value }))}
-                className="w-full rounded-lg border px-3 py-1.5 text-xs font-urbanist outline-none focus:border-rose-500"
+                value={globalSearch}
+                onChange={(e) => setGlobalSearch(e.target.value)}
+                placeholder="Search..."
+                className="w-full rounded-md border px-2 py-1 text-[11px] pr-6 font-urbanist outline-none"
               />
+              <FiSearch className="absolute right-2 top-1.5 text-gray-400" size={12} />
             </div>
 
-            {/* Global Search & Buttons */}
-            <div className="flex gap-2 items-center">
-              <div className="relative flex-1 sm:w-48">
-                <input
-                  type="text"
-                  value={globalSearch}
-                  onChange={(e) => setGlobalSearch(e.target.value)}
-                  placeholder="Global Search..."
-                  className="w-full rounded-lg border px-3 py-1.5 text-xs pr-7 font-urbanist outline-none"
-                />
-                <FiSearch className="absolute right-2.5 top-2 text-gray-400" />
-              </div>
+            <div className="flex items-center bg-gray-100 p-0.5 rounded-lg border border-gray-200 shrink-0">
+              {[
+                { key: "all", label: "All" },
+                { key: "internal", label: "Internal" },
+                { key: "external", label: "External" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setFilters((p) => ({ ...p, scope: opt.key }))}
+                  className={`px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wide transition-all whitespace-nowrap ${
+                    filters.scope === opt.key
+                      ? opt.key === "external"
+                        ? "bg-emerald-600 text-white shadow-sm"
+                        : opt.key === "internal"
+                        ? "bg-indigo-600 text-white shadow-sm"
+                        : "bg-gray-800 text-white shadow-sm"
+                      : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
 
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
               <button
                 type="button"
                 onClick={handleExport}
-                className="rounded-lg bg-rose-50 text-rose-600 p-2 border border-rose-200 hover:bg-rose-100 transition shadow-sm"
+                className="rounded-md bg-rose-50 text-rose-600 p-1.5 border border-rose-200 hover:bg-rose-100 transition shadow-sm"
                 title="Export to Excel"
               >
-                <DownloadSimple size={16} weight="duotone" />
+                <DownloadSimple size={14} weight="duotone" />
               </button>
 
               <button
                 type="button"
                 onClick={loadData}
-                className="rounded-lg bg-gray-100 text-gray-700 p-2 border border-gray-300 hover:bg-gray-200 transition shadow-sm"
+                className="rounded-md bg-gray-100 text-gray-700 p-1.5 border border-gray-300 hover:bg-gray-200 transition shadow-sm"
                 title="Refresh"
               >
-                <ArrowClockwise size={16} />
+                <ArrowClockwise size={14} />
               </button>
 
               <button
                 type="button"
                 onClick={() => {
-                  setFilters({ appreciation_type: "", shared_with: "", account: "" });
+                  setFilters({ appreciation_type: "", scope: "all" });
                   setGlobalSearch("");
                 }}
-                className="rounded-lg border border-gray-300 p-2 hover:bg-gray-100 transition shadow-sm"
+                className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-100 transition shadow-sm"
                 title="Clear Filters"
               >
-                <FiRotateCcw size={16} />
+                <FiRotateCcw size={14} />
               </button>
             </div>
           </div>
 
-          {/* Master Appreciation Table */}
-          <div className="rounded-xl bg-white border border-gray-200 shadow-sm overflow-x-auto min-h-[300px]">
+          {/* Appreciation Tiles Grid */}
+          <div className="min-h-[300px]">
             {loading ? (
-              <div className="p-8 text-center text-sm font-bold text-gray-500 flex items-center justify-center gap-2">
+              <div className="p-8 text-center text-sm font-bold text-gray-500 flex items-center justify-center gap-2 bg-white rounded-xl border border-gray-200">
                 <div className="w-5 h-5 border-2 border-rose-600 border-t-transparent rounded-full animate-spin" />
-                Loading Appreciations Table...
+                Loading Appreciations...
+              </div>
+            ) : rows.length === 0 ? (
+              <div className="p-12 text-center text-sm font-semibold text-gray-400 bg-white rounded-xl border border-gray-200">
+                No appreciations found matching criteria.
               </div>
             ) : (
-              <table className="w-full text-left text-xs border-collapse min-w-[1500px]">
-                <thead className="bg-gray-100 border-b border-gray-200 text-gray-700 font-extrabold uppercase text-[10px] tracking-wider sticky top-0">
-                  <tr>
-                    <th className="p-3 w-12 text-center">No</th>
-                    <th className="p-3 min-w-[120px]">Appreciation ID</th>
-                    <th className="p-3 min-w-[130px]">Scope</th>
-                    <th className="p-3 min-w-[140px]">Account / Customer</th>
-                    <th className="p-3 min-w-[120px]">Project ID</th>
-                    <th className="p-3 min-w-[180px]">Subject</th>
-                    <th className="p-3 min-w-[130px]">Type</th>
-                    <th className="p-3 min-w-[120px]">Received Date</th>
-                    <th className="p-3 min-w-[130px]">Recorded By</th>
-                    <th className="p-3 min-w-[180px]">Team Recognized</th>
-                    <th className="p-3 min-w-[110px]">Shared w/ Team</th>
-                    <th className="p-3 min-w-[220px]">Details</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {rows.map((row, idx) => (
-                    <tr key={row.id || idx} className={`${
-                      idx % 4 === 0 ? "bg-[#FFF5EB]" : idx % 4 === 1 ? "bg-[#F0FDFA]" : idx % 4 === 2 ? "bg-[#F1FDF5]" : "bg-[#F8FAFC]"
-                    } hover:opacity-90 transition-colors text-gray-800 border-b border-gray-200`}>
-                      <td className="p-3 text-center font-bold text-gray-400">{idx + 1}</td>
-                      <td className="p-3 font-black text-rose-700">{row.appreciation_id || `APP-${idx + 101}`}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                          String(row.appreciation_scope || "").includes("External")
-                            ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
-                            : "bg-indigo-100 text-indigo-800 border border-indigo-200"
-                        }`}>
-                          {row.appreciation_scope || "Internal Appreciation"}
-                        </span>
-                      </td>
-                      <td className="p-3 font-bold text-gray-900">{row.account || row.customer_name || "—"}</td>
-                      <td className="p-3 font-semibold text-gray-700">{row.manual_project_id || "—"}</td>
-                      <td className="p-3 font-bold text-gray-900 max-w-xs truncate">{row.subject || "—"}</td>
-                      <td className="p-3">
-                        <span className="px-2 py-0.5 rounded bg-gray-100 text-gray-700 font-bold border border-gray-200">
-                          {row.appreciation_type || "Email"}
-                        </span>
-                      </td>
-                      <td className="p-3 font-medium">{formatDateOnly(row.received_date)}</td>
-                      <td className="p-3 text-gray-600">{row.recorded_by || "—"}</td>
-                      <td className="p-3 max-w-xs truncate">{row.team_members_recognized || "—"}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${
-                          String(row.shared_with_team).toLowerCase() === "yes"
-                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                            : "bg-gray-100 text-gray-600"
-                        }`}>
-                          {row.shared_with_team || "Yes"}
-                        </span>
-                      </td>
-                      <td className="p-3 max-w-sm"><TruncatedCell content={String(row.details || "")} /></td>
-                    </tr>
-                  ))}
-                  {rows.length === 0 && (
-                    <tr>
-                      <td colSpan={12} className="p-8 text-center text-sm font-semibold text-gray-400">
-                        No appreciations found matching criteria.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {rows.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((row, idx) => (
+                  <AppreciationTile key={row.id || idx} item={row} idx={idx} onOpen={setDetailRow} />
+                ))}
+              </div>
             )}
           </div>
+          
+          {/* Pagination Controls */}
+          {activeTab === "view" && rows.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(rows.length / pageSize) || 1}
+              onPageChange={setCurrentPage}
+              totalItems={rows.length}
+              pageSize={pageSize}
+            />
+          )}
         </div>
       )}
 
@@ -629,32 +768,34 @@ const MonitoringAppreciationsPage = () => {
                 />
               </div>
 
-              {/* Program Manager (filtered by Headed By) */}
+              {/* Project Manager (filtered by Headed By) */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Program Manager</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Project Manager</label>
                 <select
                   value={createForm.project_manager}
                   onChange={(e) => setCreateForm((p) => ({ ...p, project_manager: e.target.value }))}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-urbanist outline-none focus:ring-2 focus:ring-rose-500"
                 >
-                  <option value="">{createForm.program_manager ? "Select Program Manager..." : "Select Project first"}</option>
+                  <option value="">{createForm.program_manager ? "Select Project Manager..." : "Select Project first"}</option>
                   {programManagerOptions.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Behalf Of */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Behalf Of (@arche.global Email ID)</label>
-                <input
-                  type="email"
-                  value={createForm.behalf_of}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, behalf_of: e.target.value }))}
-                  placeholder="Optional — name@arche.global"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-urbanist outline-none focus:ring-2 focus:ring-rose-500"
-                />
-              </div>
+              {/* Behalf Of — admin only */}
+              {showBehalfOf && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Behalf Of (@arche.global Email ID)</label>
+                  <input
+                    type="email"
+                    value={createForm.behalf_of}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, behalf_of: e.target.value }))}
+                    placeholder="Optional — name@arche.global"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-urbanist outline-none focus:ring-2 focus:ring-rose-500"
+                  />
+                </div>
+              )}
 
               {/* Subject */}
               <div className="md:col-span-2">
@@ -732,19 +873,6 @@ const MonitoringAppreciationsPage = () => {
                 />
               </div>
 
-              {/* Shared With Team */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Shared with Team</label>
-                <select
-                  value={createForm.shared_with_team}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, shared_with_team: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-urbanist"
-                >
-                  <option value="Yes">Yes</option>
-                  <option value="No">No</option>
-                </select>
-              </div>
-
               {/* Details / Appreciation Letter */}
               <div className="md:col-span-3">
                 <label className="block text-xs font-bold text-gray-700 mb-1">Appreciation Letter / Details *</label>
@@ -758,31 +886,29 @@ const MonitoringAppreciationsPage = () => {
                 />
               </div>
 
-              {/* Follow-Up Action */}
-              <div className="md:col-span-2">
-                <label className="block text-xs font-bold text-gray-700 mb-1">Follow-Up Action</label>
-                <input
-                  type="text"
-                  placeholder="Optional follow-up or reward announcement..."
-                  value={createForm.follow_up_action}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, follow_up_action: e.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-urbanist"
-                />
-              </div>
-
-              {/* Attachment Upload Area */}
+              {/* Photo Upload */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Attachment</label>
-                <div className="flex items-center gap-2 border border-dashed border-gray-300 rounded-lg p-2 bg-gray-50">
-                  <Paperclip size={18} className="text-gray-400" />
+                <label className="block text-xs font-bold text-gray-700 mb-1">Photo Upload</label>
+                <div className="flex items-center gap-2 border border-dashed border-rose-300 rounded-lg p-2 bg-rose-50/40">
+                  <Paperclip size={18} className="text-rose-400" />
                   <input
                     type="file"
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
                     onChange={(e) => setPendingAttachment(e.target.files?.[0] || null)}
                     className="w-full bg-transparent text-xs font-urbanist outline-none"
                   />
                 </div>
                 {pendingAttachment && (
-                  <p className="text-[11px] text-gray-500 mt-1">Selected: {pendingAttachment.name}</p>
+                  <div className="mt-2 flex items-center gap-2">
+                    {pendingAttachment.type?.startsWith("image/") && (
+                      <img
+                        src={URL.createObjectURL(pendingAttachment)}
+                        alt="Preview"
+                        className="h-14 w-14 rounded-lg object-cover border border-rose-200"
+                      />
+                    )}
+                    <p className="text-[11px] text-gray-500">Selected: {pendingAttachment.name}</p>
+                  </div>
                 )}
               </div>
 
@@ -818,62 +944,133 @@ const MonitoringAppreciationsPage = () => {
               </span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {allRows.slice(0, 6).map((item, idx) => {
-                const name = item.team_members_recognized || item.recorded_by || "Team Member";
-                const initials = getInitials(name);
-                return (
-                  <motion.div
-                    key={item.id || idx}
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.06 }}
-                    className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between items-center text-center gap-3.5 hover:-translate-y-1.5 hover:shadow-xl transition-all duration-300 relative group"
-                  >
-                    {/* Attachment Thumbnail or Pink Circular Avatar */}
-                    {item.image_url ? (
-                      <div className="w-14 h-14 rounded-full border-4 border-rose-100 shadow-sm overflow-hidden bg-gray-50 flex items-center justify-center transition-transform group-hover:scale-105">
-                        <img
-                          src={`${process.env.REACT_APP_API_URL || "http://localhost:5000"}/${item.image_url}`}
-                          alt="Appreciation attachment"
-                          style={{ objectFit: "contain", width: "100%", height: "100%" }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="w-14 h-14 rounded-full bg-rose-500 text-white font-black text-base flex items-center justify-center border-4 border-rose-100 shadow-sm transition-transform group-hover:scale-105">
-                        [{initials}]
-                      </div>
-                    )}
-
-                    {/* 5-Star Rating */}
-                    <div className="flex items-center gap-1 text-amber-400 text-sm tracking-widest">
-                      ★★★★★
-                    </div>
-
-                    {/* Employee & Account Info */}
-                    <div className="flex flex-col items-center gap-0.5">
-                      <h4 className="font-extrabold text-gray-900 text-sm">{name}</h4>
-                      <p className="text-xs font-semibold text-gray-500">
-                        {item.account || item.customer_name || "Contoso Ltd"} • {item.manual_project_id || "Core Migration"}
-                      </p>
-                      <p className="text-[11px] font-medium text-gray-400">
-                        {formatDateOnly(item.received_date)}
-                      </p>
-                    </div>
-
-                    {/* Soft Colored Message Container */}
-                    <div className="w-full bg-[#FFF5EB] border border-orange-100/80 p-4 rounded-xl text-xs text-gray-700 font-medium leading-relaxed text-left shadow-inner line-clamp-3">
-                      "{item.details || item.subject || "Resolved critical tasks with zero customer impact."}"
-                    </div>
-                  </motion.div>
-                );
-              })}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {allRows.slice(0, 6).map((item, idx) => (
+                <AppreciationTile key={item.id || idx} item={item} idx={idx} onOpen={setDetailRow} />
+              ))}
 
               {allRows.length === 0 && (
-                <div className="col-span-3 p-10 text-center text-xs text-gray-400 italic">
+                <div className="col-span-full p-10 text-center text-xs text-gray-400 italic">
                   No recent appreciations found.
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Appreciation Detail Popup */}
+      {detailRow && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setDetailRow(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border border-gray-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-rose-50/60 shrink-0">
+              <div>
+                <h3 className="text-sm font-extrabold text-gray-900 tracking-tight">
+                  Appreciation Details
+                </h3>
+                <p className="text-[11px] text-rose-700 font-bold mt-0.5">
+                  {detailRow.appreciation_id || "—"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDetailRow(null)}
+                className="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-50 text-lg font-bold leading-none"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="overflow-y-auto px-5 py-4 space-y-4">
+              {(detailRow.image_url || detailRow.attachment_url) && (
+                <div className="rounded-xl border border-rose-100 overflow-hidden bg-rose-50/30">
+                  {getAppreciationPhotoUrl(detailRow) ? (
+                    <img
+                      src={getAppreciationPhotoUrl(detailRow)}
+                      alt="Appreciation photo"
+                      className="w-full max-h-64 object-contain bg-white"
+                    />
+                  ) : (
+                    <a
+                      href={resolveUploadUrl(detailRow.attachment_url)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block px-4 py-3 text-sm font-bold text-rose-700 hover:underline"
+                    >
+                      📎 View attachment
+                    </a>
+                  )}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { label: "Appreciation ID", value: detailRow.appreciation_id },
+                  { label: "Scope", value: detailRow.appreciation_scope || "Internal Appreciation" },
+                  { label: "Account / Customer", value: detailRow.account || detailRow.customer_name },
+                  { label: "Customer Contact", value: detailRow.customer_contact },
+                  { label: "Project ID", value: detailRow.manual_project_id },
+                  { label: "Project Description", value: detailRow.project_description },
+                  { label: "Project Manager", value: detailRow.project_manager },
+                  { label: "Program Manager", value: detailRow.program_manager },
+                  { label: "Behalf Of", value: detailRow.behalf_of },
+                  { label: "Appreciation Type", value: detailRow.appreciation_type },
+                  { label: "Received Date", value: formatDateOnly(detailRow.received_date) },
+                  { label: "Recorded By", value: detailRow.recorded_by },
+                  { label: "Team Recognized", value: detailRow.team_members_recognized },
+                  { label: "Follow-up Action", value: detailRow.follow_up_action },
+                  { label: "Subject", value: detailRow.subject },
+                ].map((field) => (
+                  <div
+                    key={field.label}
+                    className="rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5"
+                  >
+                    <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
+                      {field.label}
+                    </span>
+                    <span className="text-sm font-semibold text-gray-800 break-words whitespace-pre-wrap">
+                      {field.value || "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="rounded-xl border border-rose-100 bg-rose-50/40 px-4 py-3">
+                <span className="block text-[10px] font-black uppercase tracking-wider text-rose-500 mb-2">
+                  Details
+                </span>
+                <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words font-medium">
+                  {detailRow.details || "—"}
+                </p>
+              </div>
+
+              {detailRow.comments && (
+                <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                  <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">
+                    Comments
+                  </span>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                    {detailRow.comments}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setDetailRow(null)}
+                className="px-4 py-2 rounded-xl bg-gray-900 text-white text-xs font-bold uppercase tracking-wide hover:bg-gray-800 transition"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

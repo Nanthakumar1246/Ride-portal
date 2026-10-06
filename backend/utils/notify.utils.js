@@ -4,7 +4,7 @@ import { createAppNotificationsForEmails } from "../models/appNotifications.mode
 /**
  * Sends the governance email for an event AND creates matching in-app
  * notifications for the same resolved recipients (Mitigation Owner, Log
- * Owner, Program Manager, Headed By, Behalf Of).
+ * Owner, Project Manager, Headed By, Behalf Of).
  */
 export async function notifyRecordEvent({
   module,

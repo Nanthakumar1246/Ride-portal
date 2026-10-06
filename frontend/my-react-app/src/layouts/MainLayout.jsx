@@ -20,25 +20,27 @@ import {
   User,
   Receipt,
   Key,
-  Translate,
-  CaretRight,
-  Check,
-  MagnifyingGlass
+  MagnifyingGlass,
+  Trash,
 } from "phosphor-react";
 
 import { useAuth } from "../context/AuthContext";
 import { useFilter } from "../context/FilterContext";
 import { fetchManagers } from "../api/managersApi";
-import {
-  fetchAdminNotificationCount,
-  fetchBmNotificationCount,
-} from "../api/notificationsApi";
 import { fetchMyNotifications, markNotificationReadApi, markAllNotificationsReadApi } from "../api/appNotificationsApi";
-import { approveBMApi, fetchApprovedBMsApi } from "../api/authApi";
+import { createUser, fetchAdminPmUsers, deleteUser } from "../api/usersApi";
 import logo from "../assets/arche-logo2.png";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSidebar, SidebarProvider } from "../context/SidebarContext";
 
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+const isNotificationWithinOneDay = (n) => {
+  if (!n?.created_at) return false;
+  const created = new Date(n.created_at).getTime();
+  if (Number.isNaN(created)) return false;
+  return Date.now() - created <= ONE_DAY_MS;
+};
 const MODULE_LINKS = [
   { key: "dashboard", label: "Dashboard", icon: House },
   { key: "project-master", label: "Project Master", icon: Folder },
@@ -50,6 +52,11 @@ const MODULE_LINKS = [
   { key: "appreciations", label: "Appreciation", icon: ThumbsUp },
   { key: "managers", label: "Managers", icon: UserCircle },
 ];
+
+/** BM sees only module pages — not dashboard / project master / managers. */
+const BM_LINK_KEYS = new Set(["risks", "issues", "dependencies", "escalations", "actions", "appreciations"]);
+/** PM sees Dashboard (above Risk) plus the same module pages as BM. */
+const PM_LINK_KEYS = new Set(["dashboard", "risks", "issues", "dependencies", "escalations", "actions", "appreciations"]);
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -115,15 +122,21 @@ function getTitle(pathname, search) {
 const MainLayoutInner = ({ children }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, loginTime, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [currentTime, setCurrentTime] = useState(new Date());
 
 
   const [showApprovalModal, setShowApprovalModal] = useState(false);
-  const [bmApprovalEmail, setBmApprovalEmail] = useState("");
-  const [approvalStatus, setApprovalStatus] = useState({ loading: false, error: "", success: "" });
-  const [showHistory, setShowHistory] = useState(false);
-  const [approvalHistory, setApprovalHistory] = useState([]);
+  const [memberType, setMemberType] = useState("PM"); // "PM" | "ADMIN"
+  const [addUserForm, setAddUserForm] = useState({ name: "", email: "", password: "" });
+  const [addUserSaving, setAddUserSaving] = useState(false);
+  const [addUserError, setAddUserError] = useState("");
+  const [addUserSuccess, setAddUserSuccess] = useState("");
+  const [showMemberManagement, setShowMemberManagement] = useState(false);
+  const [managedUsers, setManagedUsers] = useState([]);
+  const [managedUsersLoading, setManagedUsersLoading] = useState(false);
+  const [managedUsersError, setManagedUsersError] = useState("");
+  const [deletingUserId, setDeletingUserId] = useState("");
 
   const isDashboard = location.pathname === "/monitoring";
   const [showSearchBar, setShowSearchBar] = useState(false);
@@ -147,13 +160,6 @@ const MainLayoutInner = ({ children }) => {
   };
 
   useEffect(() => {
-    if (showHistory) {
-      fetchApprovedBMsApi().then(setApprovalHistory).catch(console.error);
-    }
-  }, [showHistory]);
-
-
-  useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
@@ -163,8 +169,6 @@ const MainLayoutInner = ({ children }) => {
     navigate("/login");
   };
 
-  const [notifCount, setNotifCount] = useState(0);
-  const [appNotifCount, setAppNotifCount] = useState(0);
   const [appNotifRows, setAppNotifRows] = useState([]);
   const [showAppNotifDropdown, setShowAppNotifDropdown] = useState(false);
   const appNotifDropdownRef = React.useRef(null);
@@ -175,9 +179,19 @@ const MainLayoutInner = ({ children }) => {
   const [showMgrDropdown, setShowMgrDropdown] = useState(false);
   const mgrDropdownRef = React.useRef(null);
 
+  // The manager ("System Filter") picker is shown to ADMIN/VP only, but the
+  // choice is kept in localStorage and so survives into the next person's
+  // session on the same browser. Anyone who cannot see the control must not
+  // silently inherit it — they would have no way to clear it again.
+  useEffect(() => {
+    const role = String(user?.role || "").toUpperCase();
+    if (role && role !== "ADMIN" && role !== "VP" && selectedManager) {
+      setSelectedManager("");
+    }
+  }, [user, selectedManager, setSelectedManager]);
+
   const [showProfileMenu, setShowProfileMenu] = useState(false);
-  const [showLangSubmenu, setShowLangSubmenu] = useState(false);
-  const [selectedLang, setSelectedLang] = useState("English (US)");
+  const [selectedLang] = useState("English (US)");
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showTxHistoryModal, setShowTxHistoryModal] = useState(false);
@@ -211,7 +225,6 @@ const MainLayoutInner = ({ children }) => {
       }
       if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
         setShowProfileMenu(false);
-        setShowLangSubmenu(false);
       }
       if (appNotifDropdownRef.current && !appNotifDropdownRef.current.contains(event.target)) {
         setShowAppNotifDropdown(false);
@@ -240,7 +253,9 @@ const MainLayoutInner = ({ children }) => {
     setSidebarOpen(false);
 
 
-    if (user.role === "ADMIN") {
+    const role = String(user.role || "").toUpperCase();
+
+    if (role === "ADMIN") {
       if (item.key === "dashboard") {
         navigate("/monitoring");
       } else if (item.key === "users") {
@@ -252,9 +267,11 @@ const MainLayoutInner = ({ children }) => {
     }
 
 
-    if (user.role === "BM" || user.role === "PM") {
+    if (role === "BM" || role === "PM") {
       if (item.key === "dashboard") {
-        navigate("/monitoring/risks");
+        // A PM has their own dashboard at /monitoring, scoped to their
+        // own created records. BM has no dashboard, so it still opens Risks.
+        navigate(role === "PM" ? "/monitoring" : "/monitoring/risks");
       } else {
         navigate(`/monitoring/${item.key}`);
       }
@@ -269,10 +286,7 @@ const MainLayoutInner = ({ children }) => {
     const path = location.pathname;
 
     if (itemKey === "dashboard") {
-      return (
-        path === "/monitoring" ||
-        path.startsWith("/modules/risks")
-      );
+      return path === "/monitoring";
     }
 
     return (
@@ -291,52 +305,73 @@ const MainLayoutInner = ({ children }) => {
   };
 
 
-  const handleApproveSubmit = async (e) => {
+  const handleAddUserSubmit = async (e) => {
     e.preventDefault();
-    setApprovalStatus({ loading: true, error: "", success: "" });
+    setAddUserError("");
+    setAddUserSuccess("");
     try {
-      await approveBMApi(bmApprovalEmail);
-      setApprovalStatus({ loading: false, error: "", success: `Approved ${bmApprovalEmail}` });
-      setBmApprovalEmail("");
-
+      setAddUserSaving(true);
+      await createUser({ ...addUserForm, role: memberType });
+      setAddUserSuccess(`${memberType} account created for ${addUserForm.email}.`);
+      setAddUserForm({ name: "", email: "", password: "" });
+      if (showMemberManagement) {
+        loadManagedUsers();
+      }
       setTimeout(() => {
         setShowApprovalModal(false);
-        setApprovalStatus({ loading: false, error: "", success: "" });
+        setAddUserSuccess("");
       }, 2000);
     } catch (err) {
-      setApprovalStatus({ loading: false, error: err.message || "Failed", success: "" });
+      setAddUserError(err?.response?.data?.message || err?.message || "Failed to create user");
+    } finally {
+      setAddUserSaving(false);
     }
   };
 
+  const loadManagedUsers = async () => {
+    setManagedUsersLoading(true);
+    setManagedUsersError("");
+    try {
+      const rows = await fetchAdminPmUsers();
+      setManagedUsers(Array.isArray(rows) ? rows : []);
+    } catch (err) {
+      setManagedUsersError(err?.response?.data?.message || err?.message || "Failed to load users");
+      setManagedUsers([]);
+    } finally {
+      setManagedUsersLoading(false);
+    }
+  };
 
-  useEffect(() => {
-    let ignore = false;
+  const handleDeleteManagedUser = async (u) => {
+    if (!u?.id) return;
+    if (String(u.id) === String(user?.id)) {
+      setManagedUsersError("You cannot delete your own account");
+      return;
+    }
+    const ok = window.confirm(`Delete ${u.name || u.email} (${u.role})? This cannot be undone.`);
+    if (!ok) return;
+    setDeletingUserId(u.id);
+    setManagedUsersError("");
+    try {
+      await deleteUser(u.id);
+      setManagedUsers((prev) => prev.filter((row) => row.id !== u.id));
+    } catch (err) {
+      setManagedUsersError(err?.response?.data?.message || err?.message || "Failed to delete user");
+    } finally {
+      setDeletingUserId("");
+    }
+  };
 
-    const load = async () => {
-      if (!user) {
-        if (!ignore) setNotifCount(0);
-        return;
-      }
-      try {
-        let c = 0;
-        if (user.role === "ADMIN") {
-          c = await fetchAdminNotificationCount();
-        } else if (user.role === "BM" || user.role === "PM") {
-          c = await fetchBmNotificationCount();
-        }
-        if (!ignore) setNotifCount(c);
-      } catch {
-        if (!ignore) setNotifCount(0);
-      }
-    };
+  const openAddMemberModal = () => {
+    setShowApprovalModal(true);
+    setShowMemberManagement(false);
+    setMemberType("PM");
+    setAddUserForm({ name: "", email: "", password: "" });
+    setAddUserError("");
+    setAddUserSuccess("");
+    setManagedUsersError("");
+  };
 
-    load();
-    const id = setInterval(load, 60000);
-    return () => {
-      ignore = true;
-      clearInterval(id);
-    };
-  }, [user]);
 
   useEffect(() => {
     let ignore = false;
@@ -344,20 +379,17 @@ const MainLayoutInner = ({ children }) => {
     const loadAppNotifs = async () => {
       if (!user) {
         if (!ignore) {
-          setAppNotifCount(0);
           setAppNotifRows([]);
         }
         return;
       }
       try {
-        const res = await fetchMyNotifications({ limit: 10 });
+        const res = await fetchMyNotifications({ limit: 20 });
         if (!ignore) {
-          setAppNotifRows(res?.data?.rows || []);
-          setAppNotifCount(res?.data?.unreadCount || 0);
+          setAppNotifRows(res?.rows || res?.data?.rows || []);
         }
       } catch {
         if (!ignore) {
-          setAppNotifCount(0);
           setAppNotifRows([]);
         }
       }
@@ -379,7 +411,6 @@ const MainLayoutInner = ({ children }) => {
     try {
       await markNotificationReadApi(id);
       setAppNotifRows((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)));
-      setAppNotifCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
       console.error("Failed to mark notification read", err);
     }
@@ -389,15 +420,20 @@ const MainLayoutInner = ({ children }) => {
     try {
       await markAllNotificationsReadApi();
       setAppNotifRows((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setAppNotifCount(0);
     } catch (err) {
       console.error("Failed to mark all notifications read", err);
     }
   };
 
+  const recentAppNotifs = appNotifRows.filter(isNotificationWithinOneDay);
+  const recentUnreadAppCount = recentAppNotifs.filter((n) => !n.is_read).length;
+  // Always show the bell for logged-in users; badge only when there are recent unread items
+  const showNotificationButton = Boolean(user);
+  const notificationBadgeCount = recentUnreadAppCount;
+
   return (
     <div className="h-screen w-full flex bg-gray-50 text-slate-900 font-urbanist overflow-hidden relative">
-      
+
       {/* Sidebar Backdrop — shown on mobile/tablet when open */}
       <AnimatePresence>
         {sidebarOpen && (
@@ -419,7 +455,15 @@ const MainLayoutInner = ({ children }) => {
       >
         {/* Drawer Header (Logo & Title) */}
         <div className="flex items-center justify-between px-4 pb-4 border-b border-gray-100/60 mb-2">
-          <div className="flex items-center gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              setSidebarOpen(false);
+              navigate("/monitoring");
+            }}
+            className="flex items-center gap-2.5 text-left hover:opacity-80 transition-opacity cursor-pointer"
+            aria-label="Go to monitoring dashboard"
+          >
             <img
               src={logo}
               alt="Arche Logo"
@@ -434,7 +478,7 @@ const MainLayoutInner = ({ children }) => {
                 {title || "Delivery"}
               </span>
             </div>
-          </div>
+          </button>
           <button
             type="button"
             onClick={() => setSidebarOpen(false)}
@@ -452,7 +496,7 @@ const MainLayoutInner = ({ children }) => {
             animate="visible"
             className="space-y-1 pr-3 pl-0"
           >
-            {(user && user.role === "ADMIN")
+            {(user && String(user.role || "").toUpperCase() === "ADMIN")
               ? [...MODULE_LINKS].map((item) => {
                 const active = isActive(item.key);
                 const Icon = item.icon;
@@ -461,11 +505,10 @@ const MainLayoutInner = ({ children }) => {
                     <button
                       type="button"
                       onClick={() => handleNavClick(item)}
-                      className={`w-full text-left pl-6 pr-3 py-2 rounded-r-md text-xs sm:text-sm transition-all flex items-center gap-3 relative ${
-                        active
+                      className={`w-full text-left pl-6 pr-3 py-2 rounded-r-md text-xs sm:text-sm transition-all flex items-center gap-3 relative ${active
                           ? "text-white font-semibold"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:pl-7"
-                      }`}
+                        }`}
                     >
                       {active && (
                         <motion.div
@@ -481,7 +524,11 @@ const MainLayoutInner = ({ children }) => {
                   </motion.li>
                 );
               })
-              : MODULE_LINKS.filter((item) => item.key !== "dashboard" && item.key !== "managers" && item.key !== "project-master").map((item) => {
+              : MODULE_LINKS.filter((item) => {
+                  const role = String(user?.role || "").toUpperCase();
+                  if (role === "PM") return PM_LINK_KEYS.has(item.key);
+                  return BM_LINK_KEYS.has(item.key);
+                }).map((item) => {
                 const active = isActive(item.key);
                 const Icon = item.icon;
                 return (
@@ -489,11 +536,10 @@ const MainLayoutInner = ({ children }) => {
                     <button
                       type="button"
                       onClick={() => handleNavClick(item)}
-                      className={`w-full text-left pl-6 pr-3 py-2 rounded-r-md text-xs sm:text-sm transition-all flex items-center gap-3 relative ${
-                        active
+                      className={`w-full text-left pl-6 pr-3 py-2 rounded-r-md text-xs sm:text-sm transition-all flex items-center gap-3 relative ${active
                           ? "text-white font-semibold"
                           : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 hover:pl-7"
-                      }`}
+                        }`}
                     >
                       {active && (
                         <motion.div
@@ -516,7 +562,7 @@ const MainLayoutInner = ({ children }) => {
         {user && (
           <div className="mx-3 mt-3 p-2.5 rounded-xl bg-gray-50 border border-gray-100">
             <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-0.5">Signed in as</div>
-            <div className="text-xs font-bold text-gray-800 truncate">{user.name || user.email}</div>
+            <div className="text-xs font-bold text-gray-800 truncate">{(user.name).toUpperCase()}</div>
             <div className="text-[10px] text-gray-400 mt-0.5 uppercase">{user.role}</div>
           </div>
         )}
@@ -524,10 +570,10 @@ const MainLayoutInner = ({ children }) => {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden relative">
-        
+
         {/* Header (Right Controls only on Desktop) */}
         <header className="flex flex-col sm:flex-row items-center justify-between lg:justify-end border-b border-gray-200 bg-white px-2 sm:px-6 py-2 sm:h-16 gap-2 sm:gap-0 shrink-0">
-          
+
           {/* Mobile Menu Toggle */}
           <div className="w-full sm:w-auto flex items-center justify-between sm:justify-start lg:hidden">
             <button
@@ -542,407 +588,326 @@ const MainLayoutInner = ({ children }) => {
             </button>
           </div>
 
-        {/* Right Side: Actions */}
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="visible"
-          className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-3 sm:gap-6 px-1 sm:px-0"
-        >
+          {/* Right Side: Actions */}
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="visible"
+            className="w-full sm:w-auto flex items-center justify-between sm:justify-end gap-3 sm:gap-6 px-1 sm:px-0"
+          >
 
-          {/* View/Edit Toggle for Modules */}
-          {isModules && (
-            <motion.div variants={itemVariants} className="inline-flex items-center gap-1 sm:gap-2 rounded-full bg-gray-100 px-1 py-1">
-              <button
-                type="button"
-                onClick={() => handleModeChange("view")}
-                className={`px-3 py-1 text-[10px] sm:text-xs rounded-full ${currentMode === "view"
-                  ? "bg-white text-brandDark shadow-sm"
-                  : "text-brandMuted"
-                  }`}
-              >
-                View
-              </button>
-              <button
-                type="button"
-                onClick={() => handleModeChange("edit")}
-                className={`px-3 py-1 text-[10px] sm:text-xs rounded-full ${currentMode === "edit"
-                  ? "bg-brandDark text-white shadow-sm"
-                  : "text-brandMuted"
-                  }`}
-              >
-                Edit
-              </button>
-            </motion.div>
-          )}
-
-          {/* Global Search (Dashboard only) */}
-          {isDashboard && (
-            <motion.div variants={itemVariants} className="hidden sm:flex items-center">
-              <motion.div
-                initial={false}
-                animate={{ width: showSearchBar ? 220 : 36 }}
-                className="flex items-center gap-1.5 bg-gray-100 rounded-full overflow-hidden h-9 px-2"
-              >
+            {/* View/Edit Toggle for Modules */}
+            {isModules && (
+              <motion.div variants={itemVariants} className="inline-flex items-center gap-1 sm:gap-2 rounded-full bg-gray-100 px-1 py-1">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (showSearchBar && searchInput) {
-                      applySearch("");
-                    }
-                    setShowSearchBar((v) => !v);
-                  }}
-                  className="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-gray-800 shrink-0"
-                  aria-label="Toggle search"
+                  onClick={() => handleModeChange("view")}
+                  className={`px-3 py-1 text-[10px] sm:text-xs rounded-full ${currentMode === "view"
+                    ? "bg-white text-brandDark shadow-sm"
+                    : "text-brandMuted"
+                    }`}
                 >
-                  <MagnifyingGlass size={16} weight="bold" />
+                  View
                 </button>
-                {showSearchBar && (
-                  <input
-                    type="text"
-                    autoFocus
-                    value={searchInput}
-                    onChange={(e) => applySearch(e.target.value)}
-                    placeholder="Search account, project, risk, issue..."
-                    className="flex-1 bg-transparent text-xs outline-none text-gray-800 placeholder:text-gray-400"
-                  />
-                )}
+                <button
+                  type="button"
+                  onClick={() => handleModeChange("edit")}
+                  className={`px-3 py-1 text-[10px] sm:text-xs rounded-full ${currentMode === "edit"
+                    ? "bg-brandDark text-white shadow-sm"
+                    : "text-brandMuted"
+                    }`}
+                >
+                  Edit
+                </button>
               </motion.div>
-            </motion.div>
-          )}
-
-          {/* Manager Filter */}
-          {(user?.role === "ADMIN" || user?.role === "VP") && (
-            <motion.div variants={itemVariants} className="relative hidden sm:block" ref={mgrDropdownRef}>
-              <button
-                onClick={() => setShowMgrDropdown(!showMgrDropdown)}
-                className="flex items-center gap-2 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/50 rounded-full py-1.5 px-4 text-sm font-semibold text-indigo-900 hover:shadow-md hover:border-indigo-300 transition-all shadow-sm group backdrop-blur-sm"
-              >
-                <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-inner group-hover:scale-110 transition-transform">
-                  <Funnel size={12} weight="bold" />
-                </div>
-                <span className="max-w-[120px] truncate tracking-tight">
-                  {selectedManager || "All Managers"}
-                </span>
-                <CaretDown size={14} className="text-indigo-400 group-hover:text-indigo-600 transition-colors" />
-              </button>
-
-              <AnimatePresence>
-                {showMgrDropdown && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                    transition={{ duration: 0.2, ease: "easeOut" }}
-                    className="absolute top-full right-0 mt-3 w-64 bg-white/70 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/40 py-3 z-50 max-h-80 overflow-y-auto ring-1 ring-black/5"
-                  >
-                    <div className="px-4 py-2 text-[10px] font-black text-indigo-400/80 uppercase tracking-widest border-b border-indigo-100/30 mb-2">
-                      System Filter
-                    </div>
-                    
-                    <button
-                      onClick={() => { setSelectedManager(""); setShowMgrDropdown(false); }}
-                      className={`w-full flex items-center px-4 py-2.5 text-sm transition-all relative ${!selectedManager ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-700 font-bold border-l-2 border-indigo-500" : "text-gray-600 hover:bg-white/50 hover:text-indigo-900 font-medium"}`}
-                    >
-                      <div className="flex-1 text-left">All Managers</div>
-                      {!selectedManager && <div className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>}
-                    </button>
-                    
-                    <div className="px-4 py-3 mt-1 text-[10px] font-black text-indigo-400/80 uppercase tracking-widest">
-                      Individuals
-                    </div>
-
-                    {[...new Set(managers.map(m => m.name))].filter(m => m && m.toLowerCase() !== "global").map(m => {
-                      if (!m) return null;
-                      const isSelected = selectedManager === m;
-                      return (
-                        <button
-                          key={m}
-                          onClick={() => { setSelectedManager(m); setShowMgrDropdown(false); }}
-                          className={`w-full flex items-center px-4 py-2.5 text-sm transition-all relative ${isSelected ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-700 font-bold border-l-2 border-indigo-500" : "text-gray-600 hover:bg-white/50 hover:text-indigo-900 font-medium"}`}
-                        >
-                          <div className="flex-1 text-left">{m}</div>
-                          {isSelected && <div className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>}
-                        </button>
-                      );
-                    })}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-          )}
-
-          <div className="flex items-center gap-3 sm:gap-6 text-xs sm:text-sm ml-auto sm:ml-0">
-            {/* Export button REMOVED from navbar */}
-
-            {showToast && (
-              <div className="absolute right-40 top-20 z-50
-                      rounded-md bg-green-600 px-3 py-1.5
-                      text-xs text-white shadow-lg
-                      animate-fade">
-                ✅ Downloaded successfully
-              </div>
             )}
 
-            {/* Notifications */}
-            {user && (
-              <motion.div variants={itemVariants} className="relative" ref={appNotifDropdownRef}>
-                <button
-                  type="button"
-                  onClick={handleOpenAppNotifDropdown}
-                  className="relative rounded-full h-8 w-8 flex items-center justify-center border border-orange-200 text-orange-500 hover:bg-orange-50 transition-colors"
-                  title="Notification"
-                  style={{ color: "#f97316", borderColor: "#fed7aa" }}
+            {/* Global Search (Dashboard only) */}
+            {isDashboard && (
+              <motion.div variants={itemVariants} className="hidden sm:flex items-center">
+                <motion.div
+                  initial={false}
+                  animate={{ width: showSearchBar ? 220 : 36 }}
+                  className="flex items-center gap-1.5 bg-gray-100 rounded-full overflow-hidden h-9 px-2"
                 >
-                  <Bell size={20} weight="duotone" />
-                  {(notifCount + appNotifCount) > 0 && (
-                    <span className="absolute -top-1 -right-1 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] leading-[16px] text-center">
-                      {notifCount + appNotifCount}
-                    </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (showSearchBar && searchInput) {
+                        applySearch("");
+                      }
+                      setShowSearchBar((v) => !v);
+                    }}
+                    className="w-5 h-5 flex items-center justify-center text-gray-500 hover:text-gray-800 shrink-0"
+                    aria-label="Toggle search"
+                  >
+                    <MagnifyingGlass size={16} weight="bold" />
+                  </button>
+                  {showSearchBar && (
+                    <input
+                      type="text"
+                      autoFocus
+                      value={searchInput}
+                      onChange={(e) => applySearch(e.target.value)}
+                      placeholder="Search account, project, risk, issue..."
+                      className="flex-1 bg-transparent text-xs outline-none text-gray-800 placeholder:text-gray-400"
+                    />
                   )}
+                </motion.div>
+              </motion.div>
+            )}
+
+            {/* Manager Filter */}
+            {(user?.role === "ADMIN" || user?.role === "VP") && (
+              <motion.div variants={itemVariants} className="relative hidden sm:block" ref={mgrDropdownRef}>
+                <button
+                  onClick={() => setShowMgrDropdown(!showMgrDropdown)}
+                  className="flex items-center gap-2 bg-gradient-to-r from-blue-50 via-indigo-50 to-purple-50 border border-blue-200/50 rounded-full py-1.5 px-4 text-sm font-semibold text-indigo-900 hover:shadow-md hover:border-indigo-300 transition-all shadow-sm group backdrop-blur-sm"
+                >
+                  <div className="h-6 w-6 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-inner group-hover:scale-110 transition-transform">
+                    <Funnel size={12} weight="bold" />
+                  </div>
+                  <span className="max-w-[120px] truncate tracking-tight">
+                    {selectedManager || "All Managers"}
+                  </span>
+                  <CaretDown size={14} className="text-indigo-400 group-hover:text-indigo-600 transition-colors" />
                 </button>
 
                 <AnimatePresence>
-                  {showAppNotifDropdown && (
+                  {showMgrDropdown && (
                     <motion.div
                       initial={{ opacity: 0, y: 10, scale: 0.95 }}
                       animate={{ opacity: 1, y: 0, scale: 1 }}
                       exit={{ opacity: 0, y: 10, scale: 0.95 }}
                       transition={{ duration: 0.2, ease: "easeOut" }}
-                      className="absolute top-full right-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 py-2 z-50 max-h-96 overflow-y-auto"
+                      className="absolute top-full right-0 mt-3 w-64 bg-white/70 backdrop-blur-2xl rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-white/40 py-3 z-50 max-h-80 overflow-y-auto ring-1 ring-black/5"
                     >
-                      <div className="px-4 py-2 flex items-center justify-between border-b border-gray-100 mb-1">
-                        <span className="text-xs font-black text-gray-700">Notifications</span>
-                        {appNotifCount > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleMarkAllNotifsRead}
-                            className="text-[10px] font-bold text-indigo-600 hover:underline"
-                          >
-                            Mark all read
-                          </button>
-                        )}
+                      <div className="px-4 py-2 text-[10px] font-black text-indigo-400/80 uppercase tracking-widest border-b border-indigo-100/30 mb-2">
+                        System Filter
                       </div>
-                      {appNotifRows.length === 0 ? (
-                        <div className="px-4 py-6 text-center text-xs text-gray-400">No notifications yet.</div>
-                      ) : (
-                        appNotifRows.map((n) => (
+
+                      <button
+                        onClick={() => { setSelectedManager(""); setShowMgrDropdown(false); }}
+                        className={`w-full flex items-center px-4 py-2.5 text-sm transition-all relative ${!selectedManager ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-700 font-bold border-l-2 border-indigo-500" : "text-gray-600 hover:bg-white/50 hover:text-indigo-900 font-medium"}`}
+                      >
+                        <div className="flex-1 text-left">All Managers</div>
+                        {!selectedManager && <div className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>}
+                      </button>
+
+                      <div className="px-4 py-3 mt-1 text-[10px] font-black text-indigo-400/80 uppercase tracking-widest">
+                        Individuals
+                      </div>
+
+                      {[...new Set(managers.map(m => m.name))].filter(m => m && m.toLowerCase() !== "global").map(m => {
+                        if (!m) return null;
+                        const isSelected = selectedManager === m;
+                        return (
                           <button
-                            key={n.id}
-                            type="button"
-                            onClick={() => !n.is_read && handleMarkNotifRead(n.id)}
-                            className={`w-full text-left px-4 py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${n.is_read ? "opacity-60" : ""}`}
+                            key={m}
+                            onClick={() => { setSelectedManager(m); setShowMgrDropdown(false); }}
+                            className={`w-full flex items-center px-4 py-2.5 text-sm transition-all relative ${isSelected ? "bg-gradient-to-r from-blue-50 to-indigo-50 text-indigo-700 font-bold border-l-2 border-indigo-500" : "text-gray-600 hover:bg-white/50 hover:text-indigo-900 font-medium"}`}
                           >
-                            <div className="flex items-center gap-2">
-                              {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />}
-                              <span className="text-xs font-bold text-gray-800 truncate">{n.title}</span>
-                            </div>
-                            {n.message && <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>}
-                            <span className="text-[10px] text-gray-400 mt-0.5 block">
-                              {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
-                            </span>
+                            <div className="flex-1 text-left">{m}</div>
+                            {isSelected && <div className="h-2 w-2 rounded-full bg-gradient-to-r from-blue-400 to-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.6)]"></div>}
                           </button>
-                        ))
-                      )}
-                      {(user.role === "ADMIN" || user.role === "BM" || user.role === "PM") && (
-                        <button
-                          type="button"
-                          onClick={() => { setShowAppNotifDropdown(false); goNotifications(); }}
-                          className="w-full text-center px-4 py-2 text-[11px] font-bold text-indigo-600 hover:underline border-t border-gray-100 mt-1"
-                        >
-                          View Approval Requests
-                        </button>
-                      )}
+                        );
+                      })}
                     </motion.div>
                   )}
                 </AnimatePresence>
               </motion.div>
             )}
 
-            {/* NEW MEMBER (Replaced Approve BM) */}
-            {user && user.role === "ADMIN" && (
-              <motion.button
-                variants={itemVariants}
-                type="button"
-                onClick={() => setShowApprovalModal(true)}
-                className="rounded-full h-8 w-8 flex items-center justify-center border border-purple-200 text-purple-600 hover:bg-purple-50 transition-colors"
-                title="Add New Member"
-                style={{ color: "#9333ea", borderColor: "#e9d5ff" }}
-              >
-                <UserPlus size={20} weight="duotone" />
-              </motion.button>
-            )}
+            <div className="flex items-center gap-3 sm:gap-6 text-xs sm:text-sm ml-auto sm:ml-0">
+              {/* Export button REMOVED from navbar */}
 
-            {/* User Info & Profile Dropdown */}
-            {user && (
-              <motion.div variants={itemVariants} className="hidden sm:flex flex-col text-right shrink-0">
-                <span className="text-xs font-black text-gray-900 leading-none">{user.name || "User Name"}</span>
-                <span className="text-[10px] font-bold text-gray-400 mt-1 leading-none">{user.email || "email@domain.com"}</span>
-              </motion.div>
-            )}
+              {showToast && (
+                <div className="absolute right-40 top-20 z-50
+                      rounded-md bg-green-600 px-3 py-1.5
+                      text-xs text-white shadow-lg
+                      animate-fade">
+                  ✅ Downloaded successfully
+                </div>
+              )}
 
-            {/* User Profile Dropdown */}
-            <motion.div variants={itemVariants} className="relative flex items-center" ref={profileDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setShowProfileMenu((prev) => !prev)}
-                className={`rounded-full h-8 w-8 flex items-center justify-center border border-gray-300 text-slate-700 hover:bg-gray-100 transition-all ${
-                  showProfileMenu ? "ring-2 ring-indigo-500 border-transparent bg-gray-100" : ""
-                }`}
-                title="Profile Menu"
-              >
-                <UserCircle size={22} weight="duotone" />
-              </button>
-
-              <AnimatePresence>
-                {showProfileMenu && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 10, scale: 0.96 }}
-                    transition={{ duration: 0.15, ease: "easeOut" }}
-                    className="absolute right-0 top-full mt-2 w-80 bg-white rounded-md shadow-2xl border border-gray-200 z-50 overflow-hidden font-urbanist py-4"
+              {/* Notifications — always visible next to profile when logged in */}
+              {showNotificationButton && (
+                <motion.div variants={itemVariants} className="relative" ref={appNotifDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={handleOpenAppNotifDropdown}
+                    className="relative rounded-full h-8 w-8 flex items-center justify-center border border-orange-200 text-orange-500 hover:bg-orange-50 transition-colors"
+                    title="Notification"
+                    style={{ color: "#f97316", borderColor: "#fed7aa" }}
                   >
-                    {/* Top Section - User Info Card */}
-                    <div className="flex flex-col items-center px-6 pt-1 pb-3">
-                      {/* Large circular avatar icon */}
-                      <div className="w-24 h-24 rounded-full bg-[#595959] text-white flex items-center justify-center mb-3 shadow-md border-2 border-white">
-                        <User size={58} weight="regular" />
+                    <Bell size={20} weight="duotone" />
+                    {notificationBadgeCount > 0 && (
+                      <span className="absolute -top-1 -right-1 min-w-[16px] px-1 rounded-full bg-red-500 text-white text-[10px] leading-[16px] text-center">
+                        {notificationBadgeCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <AnimatePresence>
+                    {showAppNotifDropdown && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                        transition={{ duration: 0.2, ease: "easeOut" }}
+                        className="absolute top-full right-0 mt-3 w-80 bg-white rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-100 py-2 z-50 max-h-96 overflow-y-auto"
+                      >
+                        <div className="px-4 py-2 flex items-center justify-between border-b border-gray-100 mb-1">
+                          <span className="text-xs font-black text-gray-700">Notifications</span>
+                          {recentUnreadAppCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={handleMarkAllNotifsRead}
+                              className="text-[10px] font-bold text-indigo-600 hover:underline"
+                            >
+                              Mark all read
+                            </button>
+                          )}
+                        </div>
+                        {recentAppNotifs.length === 0 ? (
+                          <div className="px-4 py-6 text-center text-xs text-gray-400">No new notifications.</div>
+                        ) : (
+                          recentAppNotifs.map((n) => (
+                            <button
+                              key={n.id}
+                              type="button"
+                              onClick={() => !n.is_read && handleMarkNotifRead(n.id)}
+                              className={`w-full text-left px-4 py-2.5 border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors ${n.is_read ? "opacity-60" : ""}`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />}
+                                <span className="text-xs font-bold text-gray-800 truncate flex-1">{n.title}</span>
+                                <span className="shrink-0 text-[9px] font-black uppercase tracking-wide px-1.5 py-0.5 rounded bg-orange-100 text-orange-700 border border-orange-200">
+                                  New
+                                </span>
+                              </div>
+                              {n.message && <p className="text-[11px] text-gray-500 mt-0.5 line-clamp-2">{n.message}</p>}
+                              <span className="text-[10px] text-gray-400 mt-0.5 block">
+                                {n.created_at ? new Date(n.created_at).toLocaleString() : ""}
+                              </span>
+                            </button>
+                          ))
+                        )}
+                        {(user.role === "ADMIN" || user.role === "BM" || user.role === "PM") && (
+                          <button
+                            type="button"
+                            onClick={() => { setShowAppNotifDropdown(false); goNotifications(); }}
+                            className="w-full text-center px-4 py-2 text-[11px] font-bold text-indigo-600 hover:underline border-t border-gray-100 mt-1"
+                          >
+                            View Approval Requests
+                          </button>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              )}
+
+              {/* NEW MEMBER (Replaced Approve BM) */}
+              {user && user.role === "ADMIN" && (
+                <motion.button
+                  variants={itemVariants}
+                  type="button"
+                  onClick={openAddMemberModal}
+                  className="rounded-full h-8 w-8 flex items-center justify-center border border-purple-200 text-purple-600 hover:bg-purple-50 transition-colors"
+                  title="Add New Member"
+                  style={{ color: "#9333ea", borderColor: "#e9d5ff" }}
+                >
+                  <UserPlus size={20} weight="duotone" />
+                </motion.button>
+              )}
+
+              {/* User Info & Profile Dropdown */}
+              {user && (
+                <motion.div variants={itemVariants} className="hidden sm:flex flex-col text-right shrink-0">
+                  <span className="text-xs font-black text-gray-900 leading-none">{user.name || "User Name"}</span>
+                  <span className="text-[10px] font-bold text-gray-400 mt-1 leading-none">{user.email || "email@domain.com"}</span>
+                </motion.div>
+              )}
+
+              {/* User Profile Dropdown */}
+              <motion.div variants={itemVariants} className="relative flex items-center" ref={profileDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setShowProfileMenu((prev) => !prev)}
+                  className={`rounded-full h-8 w-8 flex items-center justify-center border border-gray-300 text-slate-700 hover:bg-gray-100 transition-all ${showProfileMenu ? "ring-2 ring-indigo-500 border-transparent bg-gray-100" : ""
+                    }`}
+                  title="Profile Menu"
+                >
+                  <UserCircle size={22} weight="duotone" />
+                </button>
+
+                <AnimatePresence>
+                  {showProfileMenu && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.96 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute right-0 top-full mt-2 w-80 bg-white rounded-md shadow-2xl border border-gray-200 z-50 overflow-hidden font-urbanist py-4"
+                    >
+                      {/* Top Section - User Info Card */}
+                      <div className="flex flex-col items-center px-6 pt-1 pb-3">
+                        {/* Large circular avatar icon */}
+                        <div className="w-24 h-24 rounded-full bg-[#595959] text-white flex items-center justify-center mb-3 shadow-md border-2 border-white">
+                          <User size={58} weight="regular" />
+                        </div>
+
+                        {/* Name + Code */}
+                        <div className="text-center">
+                          <div className="text-base font-normal text-gray-900 tracking-tight leading-tight">
+                            {(user?.name).toUpperCase()}
+                          </div>
+                          {/* Email */}
+                          <div className="text-sm text-gray-800 mt-1">
+                            <span className="font-bold text-gray-900">Email: </span>
+                            {user?.email}
+                          </div>
+                        </div>
                       </div>
 
-                      {/* Name + Code */}
-                      <div className="text-center">
-                        <div className="text-base font-normal text-gray-900 tracking-tight leading-tight">
-                          {user?.name || "B Santhosh"} ({user?.employeeId || user?.empId || "AGFT1536"})
-                        </div>
-                        {/* Email */}
-                        <div className="text-sm text-gray-800 mt-1">
-                          <span className="font-bold text-gray-900">Email: </span>
-                          {user?.email || "santhosh.b@arche.global"}
-                        </div>
-                      </div>
-                    </div>
+                      {/* Divider */}
+                      <div className="border-t border-gray-200 my-2" />
 
-                    {/* Divider */}
-                    <div className="border-t border-gray-200 my-2" />
-
-                    {/* Menu Options */}
-                    <div className="py-1">
-                      {/* My Profile */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowProfileMenu(false);
-                          setShowProfileModal(true);
-                        }}
-                        className="w-full flex items-center gap-3.5 px-6 py-2.5 text-gray-800 hover:bg-gray-100/80 transition-colors text-left text-sm sm:text-base font-medium"
-                      >
-                        <User size={20} weight="bold" className="text-gray-700 shrink-0" />
-                        <span>My Profile</span>
-                      </button>
-
-                      {/* My Transaction History */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowProfileMenu(false);
-                          setShowTxHistoryModal(true);
-                        }}
-                        className="w-full flex items-center gap-3.5 px-6 py-2.5 text-gray-800 hover:bg-gray-100/80 transition-colors text-left text-sm sm:text-base font-medium"
-                      >
-                        <Receipt size={20} weight="bold" className="text-gray-700 shrink-0" />
-                        <span>My Transaction History</span>
-                      </button>
-
-                      {/* Change password */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowProfileMenu(false);
-                          setShowPasswordModal(true);
-                        }}
-                        className="w-full flex items-center gap-3.5 px-6 py-2.5 text-gray-800 hover:bg-gray-100/80 transition-colors text-left text-sm sm:text-base font-medium"
-                      >
-                        <Key size={20} weight="bold" className="text-gray-700 shrink-0" />
-                        <span>Change password</span>
-                      </button>
-
-                      {/* Language */}
-                      <div className="relative">
+                      {/* Menu Options */}
+                      <div className="py-1">
+                 
+                        {/* Logout */}
                         <button
                           type="button"
-                          onClick={() => setShowLangSubmenu((prev) => !prev)}
-                          className="w-full flex items-center justify-between px-6 py-2.5 text-gray-800 hover:bg-gray-100/80 transition-colors text-left text-sm sm:text-base font-medium"
+                          onClick={() => {
+                            setShowProfileMenu(false);
+                            handleLogout();
+                          }}
+                          className="w-full flex items-center gap-3.5 px-6 py-2.5 text-gray-800 hover:bg-gray-100/80 transition-colors text-left text-sm sm:text-base font-medium"
                         >
-                          <div className="flex items-center gap-3.5">
-                            <Translate size={20} weight="bold" className="text-gray-700 shrink-0" />
-                            <span>Language</span>
-                          </div>
-                          <CaretRight size={16} weight="bold" className="text-gray-800" />
+                          <SignOut size={20} weight="bold" className="text-gray-700 shrink-0" />
+                          <span>Logout</span>
                         </button>
-
-                        {/* Language Selector Accordion */}
-                        <AnimatePresence>
-                          {showLangSubmenu && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: "auto" }}
-                              exit={{ opacity: 0, height: 0 }}
-                              className="bg-gray-50 border-y border-gray-200 px-8 py-2 space-y-1 overflow-hidden"
-                            >
-                              {["English (US)", "English (UK)", "Hindi", "Spanish"].map((lang) => (
-                                <button
-                                  key={lang}
-                                  type="button"
-                                  onClick={() => {
-                                    setSelectedLang(lang);
-                                    setShowLangSubmenu(false);
-                                    setShowProfileMenu(false);
-                                  }}
-                                  className={`w-full text-left py-1.5 px-3 text-xs sm:text-sm rounded flex items-center justify-between transition-colors ${
-                                    selectedLang === lang ? "bg-indigo-50 text-indigo-700 font-bold" : "text-gray-700 hover:bg-gray-200/60"
-                                  }`}
-                                >
-                                  <span>{lang}</span>
-                                  {selectedLang === lang && <Check size={14} weight="bold" />}
-                                </button>
-                              ))}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
                       </div>
-
-                      {/* Logout */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowProfileMenu(false);
-                          handleLogout();
-                        }}
-                        className="w-full flex items-center gap-3.5 px-6 py-2.5 text-gray-800 hover:bg-gray-100/80 transition-colors text-left text-sm sm:text-base font-medium"
-                      >
-                        <SignOut size={20} weight="bold" className="text-gray-700 shrink-0" />
-                        <span>Logout</span>
-                      </button>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
 
 
-            {/* Clock & Date Display */}
-            <motion.div variants={itemVariants} className="flex flex-col items-end justify-center text-right ml-2 border-l border-gray-200/80 pl-4 h-9 shrink-0">
-              <span className="text-[11px] font-bold text-[#8c9bb0] uppercase tracking-wider leading-none mb-1">
-                {`${currentTime.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}, ${currentTime.getDate()} ${currentTime.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}`}
-              </span>
-              <span className="text-sm font-urbanist font-bold text-[#1e293b] tabular-nums leading-none">
-                {currentTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()}
-              </span>
-            </motion.div>
-          </div>
-        </motion.div>
-      </header >
+              {/* Clock & Date Display */}
+              <motion.div variants={itemVariants} className="flex flex-col items-end justify-center text-right ml-2 border-l border-gray-200/80 pl-4 h-9 shrink-0">
+                <span className="text-[11px] font-bold text-[#8c9bb0] uppercase tracking-wider leading-none mb-1">
+                  {`${currentTime.toLocaleDateString("en-US", { weekday: "short" }).toUpperCase()}, ${currentTime.getDate()} ${currentTime.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}`}
+                </span>
+                <span className="text-sm font-urbanist font-bold text-[#1e293b] tabular-nums leading-none">
+                  {currentTime.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase()}
+                </span>
+              </motion.div>
+            </div>
+          </motion.div>
+        </header >
         <main className={`flex-1 min-h-0 overflow-auto overflow-x-hidden ${isModules && currentMode === "edit" ? "p-0" : "px-2 sm:px-4 py-4"}`}>
           <AnimatePresence mode="wait">
             <motion.div
@@ -974,7 +939,9 @@ const MainLayoutInner = ({ children }) => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="relative bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm z-10 font-urbanist"
+              className={`relative bg-white rounded-xl shadow-2xl p-6 w-full z-10 font-urbanist ${
+                showMemberManagement ? "max-w-3xl" : "max-w-md"
+              }`}
             >
               <button
                 onClick={() => setShowApprovalModal(false)}
@@ -983,79 +950,183 @@ const MainLayoutInner = ({ children }) => {
                 <X size={20} />
               </button>
 
-              <div className="flex flex-col items-center mb-6">
+              <div className="flex flex-col items-center mb-5">
                 <div className="h-10 w-10 bg-purple-50 text-purple-600 rounded-full flex items-center justify-center mb-3">
                   <UserPlus size={24} weight="duotone" />
                 </div>
                 <h3 className="text-lg font-bold text-gray-900">ADD NEW MEMBER</h3>
                 <p className="text-gray-500 text-xs text-center mt-1">
-                  Enter the email ID of the new member
+                  Create an Admin or PM account
                 </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !showMemberManagement;
+                    setShowMemberManagement(next);
+                    if (next) loadManagedUsers();
+                  }}
+                  className="mt-3 px-3 py-1 rounded-full border border-purple-200 text-[10px] font-bold uppercase tracking-wide text-purple-700 hover:bg-purple-50 transition"
+                >
+                  {showMemberManagement ? "Back to Create" : "Management"}
+                </button>
               </div>
 
-              {!showHistory ? (
-                <>
-                  <form onSubmit={handleApproveSubmit} className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase">Mail</label>
-                      <input
-                        type="email"
-                        value={bmApprovalEmail}
-                        onChange={(e) => setBmApprovalEmail(e.target.value)}
-                        placeholder="bm@arche.global"
-                        className="w-full p-3 rounded border border-gray-200 text-sm focus:border-purple-600 focus:ring-1 focus:ring-purple-600 outline-none"
-                        required
-                      />
-                    </div>
-
-                    {approvalStatus.error && (
-                      <div className="text-red-500 text-xs bg-red-50 p-2 rounded border border-red-100">
-                        {approvalStatus.error}
-                      </div>
-                    )}
-                    {approvalStatus.success && (
-                      <div className="text-green-600 text-xs bg-green-50 p-2 rounded border border-green-100">
-                        {approvalStatus.success}
-                      </div>
-                    )}
-
-                    <button
-                      type="submit"
-                      disabled={approvalStatus.loading}
-                      className="w-full bg-purple-600 text-white py-3 rounded font-bold uppercase tracking-wider text-sm hover:bg-purple-700 transition shadow-md"
-                    >
-                      {approvalStatus.loading ? "Approving..." : "Approve Access"}
-                    </button>
-                  </form>
-                  <div className="mt-4 text-center">
+              {showMemberManagement ? (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-bold text-gray-600 uppercase tracking-wide">PM & Admin users</p>
                     <button
                       type="button"
-                      onClick={() => setShowHistory(true)}
-                      className="text-xs text-purple-600 font-semibold hover:underline"
+                      onClick={loadManagedUsers}
+                      className="text-[10px] font-semibold text-purple-600 hover:underline"
                     >
-                      View Approval History
+                      Refresh
                     </button>
                   </div>
-                </>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-bold text-gray-800">Past Approvals</h4>
-                    <button onClick={() => setShowHistory(false)} className="text-xs text-gray-500 hover:text-purple-600">Back</button>
-                  </div>
-                  <div className="bg-gray-50 rounded border border-gray-100 max-h-48 overflow-y-auto p-2 space-y-2">
-                    {approvalHistory.length === 0 ? (
-                      <p className="text-xs text-center text-gray-400 py-2">No history found</p>
+
+                  {managedUsersError && (
+                    <div className="text-red-500 text-xs bg-red-50 p-2 rounded border border-red-100">
+                      {managedUsersError}
+                    </div>
+                  )}
+
+                  <div className="max-h-80 overflow-auto border border-gray-200 rounded-lg">
+                    {managedUsersLoading ? (
+                      <p className="text-xs text-center text-gray-400 py-8">Loading users…</p>
+                    ) : managedUsers.length === 0 ? (
+                      <p className="text-xs text-center text-gray-400 py-8">No Admin/PM users found.</p>
                     ) : (
-                      approvalHistory.map((item, i) => (
-                        <div key={i} className="flex flex-col border-b border-gray-200 last:border-0 pb-2 last:pb-0">
-                          <span className="text-xs font-semibold text-gray-800">{item.email}</span>
-                          <span className="text-[10px] text-gray-500">{new Date(item.approvedAt).toLocaleDateString()} {new Date(item.approvedAt).toLocaleTimeString()}</span>
-                        </div>
-                      ))
+                      <table className="w-full text-left border-collapse min-w-[560px]">
+                        <thead className="sticky top-0 bg-gray-100 border-b border-gray-200">
+                          <tr>
+                            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-gray-500 w-12">No</th>
+                            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-gray-500">Name</th>
+                            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-gray-500">Email ID</th>
+                            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-gray-500 w-24">Role</th>
+                            <th className="px-3 py-2.5 text-[10px] font-black uppercase tracking-wide text-gray-500 w-28 text-center">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {managedUsers.map((u, idx) => (
+                            <tr key={u.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50/80">
+                              <td className="px-3 py-2.5 text-xs font-semibold text-gray-500">{idx + 1}</td>
+                              <td className="px-3 py-2.5 text-xs font-bold text-gray-900">{u.name || "—"}</td>
+                              <td className="px-3 py-2.5 text-xs text-gray-600 break-all">{u.email}</td>
+                              <td className="px-3 py-2.5">
+                                <span className={`inline-block text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${
+                                  String(u.role).toUpperCase() === "ADMIN"
+                                    ? "bg-indigo-100 text-indigo-700"
+                                    : "bg-emerald-100 text-emerald-700"
+                                }`}>
+                                  {u.role}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2.5 text-center">
+                                <button
+                                  type="button"
+                                  title={String(u.id) === String(user?.id) ? "Cannot delete yourself" : "Delete user"}
+                                  disabled={deletingUserId === u.id || String(u.id) === String(user?.id)}
+                                  onClick={() => handleDeleteManagedUser(u)}
+                                  className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide text-red-600 hover:bg-red-50 border border-red-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  <Trash size={12} weight="bold" />
+                                  {deletingUserId === u.id ? "…" : "Delete"}
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     )}
                   </div>
                 </div>
+              ) : (
+                <>
+                  <div className="flex gap-1 p-1 mb-4 rounded-lg bg-gray-100">
+                    {[
+                      { key: "PM", label: "PM" },
+                      { key: "ADMIN", label: "Admin" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => {
+                          setMemberType(opt.key);
+                          setAddUserError("");
+                          setAddUserSuccess("");
+                        }}
+                        className={`flex-1 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wide transition ${
+                          memberType === opt.key
+                            ? "bg-white text-purple-700 shadow-sm"
+                            : "text-gray-500 hover:text-gray-700"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <form onSubmit={handleAddUserSubmit} className="space-y-3">
+                    <p className="text-[11px] text-gray-500">
+                      Creates a real {memberType} account stored in the database.
+                    </p>
+
+                    {addUserError && (
+                      <div className="text-red-500 text-xs bg-red-50 p-2 rounded border border-red-100">
+                        {addUserError}
+                      </div>
+                    )}
+                    {addUserSuccess && (
+                      <div className="text-green-600 text-xs bg-green-50 p-2 rounded border border-green-100">
+                        {addUserSuccess}
+                      </div>
+                    )}
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Name</label>
+                      <input
+                        type="text"
+                        required
+                        value={addUserForm.name}
+                        onChange={(e) => setAddUserForm((p) => ({ ...p, name: e.target.value }))}
+                        className="w-full p-3 rounded border border-gray-200 text-sm focus:border-purple-600 focus:ring-1 focus:ring-purple-600 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Email (@arche.global)</label>
+                      <input
+                        type="email"
+                        required
+                        value={addUserForm.email}
+                        onChange={(e) => setAddUserForm((p) => ({ ...p, email: e.target.value }))}
+                        placeholder="name@arche.global"
+                        className="w-full p-3 rounded border border-gray-200 text-sm focus:border-purple-600 focus:ring-1 focus:ring-purple-600 outline-none"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-gray-500 uppercase">Temporary Password</label>
+                      <input
+                        type="text"
+                        required
+                        minLength={8}
+                        value={addUserForm.password}
+                        onChange={(e) => setAddUserForm((p) => ({ ...p, password: e.target.value }))}
+                        placeholder="At least 8 characters"
+                        className="w-full p-3 rounded border border-gray-200 text-sm focus:border-purple-600 focus:ring-1 focus:ring-purple-600 outline-none"
+                      />
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={addUserSaving}
+                      className="w-full bg-purple-600 text-white py-3 rounded font-bold uppercase tracking-wider text-sm hover:bg-purple-700 transition shadow-md disabled:opacity-60"
+                    >
+                      {addUserSaving ? "Creating…" : `Create ${memberType} User`}
+                    </button>
+                  </form>
+                </>
               )}
             </motion.div>
           </div>
@@ -1101,7 +1172,7 @@ const MainLayoutInner = ({ children }) => {
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-200/60">
                   <span className="text-gray-500 font-medium">Employee Code</span>
-                  <span className="font-bold text-gray-800">{user?.employeeId || user?.empId || "AGFT1536"}</span>
+                  <span className="font-bold text-gray-800">{user?.employeeId || user?.empId }</span>
                 </div>
                 <div className="flex justify-between py-1 border-b border-gray-200/60">
                   <span className="text-gray-500 font-medium">Email Address</span>

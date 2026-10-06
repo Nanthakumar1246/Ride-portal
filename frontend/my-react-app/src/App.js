@@ -16,6 +16,7 @@ import EscalationsPage from "./pages/EscalationsPage";
 import DashboardPage from "./pages/DashboardPage";
 import MonitoringDashboardPage from "./pages/MonitoringDashboardPage";
 import MonitoringRisksPage from "./pages/MonitoringRisksPage";
+import ModuleStatusUpdatePage from "./pages/ModuleStatusUpdatePage";
 import MonitoringIssuesPage from "./pages/MonitoringIssuesPage";
 import MonitoringDependenciesPage from "./pages/MonitoringDependenciesPage";
 import MonitoringActionsPage from "./pages/MonitoringActionsPage";
@@ -68,7 +69,7 @@ function App() {
           <Route
             path="/monitoring"
             element={
-              <ProtectedRoute allowedRoles={["ADMIN"]}>
+              <ProtectedRoute allowedRoles={["ADMIN", "PM"]}>
                 <MainLayout>
                   <MonitoringDashboardPage />
                 </MainLayout>
@@ -107,11 +108,31 @@ function App() {
             }
           />
           <Route
+            path="/monitoring/risks/update"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
+                <MainLayout>
+                  <ModuleStatusUpdatePage moduleKey="risk" />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/monitoring/issues"
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringIssuesPage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/monitoring/issues/update"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
+                <MainLayout>
+                  <ModuleStatusUpdatePage moduleKey="issue" />
                 </MainLayout>
               </ProtectedRoute>
             }
@@ -127,6 +148,16 @@ function App() {
             }
           />
           <Route
+            path="/monitoring/dependencies/update"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
+                <MainLayout>
+                  <ModuleStatusUpdatePage moduleKey="dependency" />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/monitoring/escalations"
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
@@ -137,11 +168,31 @@ function App() {
             }
           />
           <Route
+            path="/monitoring/escalations/update"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
+                <MainLayout>
+                  <ModuleStatusUpdatePage moduleKey="escalation" />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/monitoring/actions"
             element={
               <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
                 <MainLayout>
                   <MonitoringActionsPage />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/monitoring/actions/update"
+            element={
+              <ProtectedRoute allowedRoles={["ADMIN", "BM", "PM"]}>
+                <MainLayout>
+                  <ModuleStatusUpdatePage moduleKey="action" />
                 </MainLayout>
               </ProtectedRoute>
             }
@@ -219,7 +270,7 @@ function App() {
           <Route
             path="/bm/notifications"
             element={
-              <ProtectedRoute allowedRoles={["BM", "PM"]}>
+              <ProtectedRoute allowedRoles={["PM"]}>
                 <MainLayout>
                   <BmNotificationsPage />
                 </MainLayout>

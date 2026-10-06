@@ -72,7 +72,29 @@ export const saveMappingTemplate = async (templateData) => {
 };
 
 export const createProject = async (data) => {
-  const res = await axios.post(`${BASE_URL}/projects`, data, { headers: getAuthHeaders() });
+  const payload = {
+    ...data,
+    name: data.manual_project_id || data.name,
+    description: data.project_description || data.description,
+  };
+  const res = await axios.post(`${BASE_URL}/projects/create`, payload, { headers: getAuthHeaders() });
+  return res.data;
+};
+
+export const updateProject = async (id, data) => {
+  const res = await axios.put(
+    `${BASE_URL}/projects/update`,
+    { id, ...data },
+    { headers: getAuthHeaders() }
+  );
+  return res.data;
+};
+
+export const deleteProject = async (id) => {
+  const res = await axios.delete(`${BASE_URL}/projects/delete`, {
+    headers: getAuthHeaders(),
+    data: { id },
+  });
   return res.data;
 };
 

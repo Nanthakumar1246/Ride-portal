@@ -72,7 +72,7 @@ const ManagersAdminPage = () => {
             <div className="bg-gradient-to-r from-gray-900 to-gray-800 p-6 sm:p-8 rounded-3xl shadow-xl border border-white/5 text-white overflow-hidden relative group">
                 <div className="absolute top-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-20 -mt-20 blur-3xl" />
                 <div className="relative z-10">
-                    <h1 className="text-2xl sm:text-3xl font-marcellus font-bold mb-3 flex items-center gap-3">
+                    <h1 className="text-2xl text-black sm:text-3xl font-marcellus font-bold mb-3 flex items-center gap-3">
                         <UserCircle size={32} weight="fill" className="text-brandOrange" />
                         Managers Management
                     </h1>
@@ -114,7 +114,7 @@ const ManagersAdminPage = () => {
                             />
                         </div>
                         <div>
-                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Program Manager</label>
+                            <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Project Manager</label>
                             <input
                                 type="text"
                                 value={memberName}

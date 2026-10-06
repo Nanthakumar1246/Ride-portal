@@ -18,6 +18,7 @@ import { sendNewItemEmailNotification, sendGovernanceEventMail } from "../utils/
 import { notifyRecordEvent } from "../utils/notify.utils.js";
 import { createModuleHistory } from "../models/moduleHistory.model.js";
 import { isValidBehalfOf } from "../utils/validation.utils.js";
+import { validateStatusProof, attachmentFields } from "../utils/statusProof.utils.js";
 import pool from "../db.js";
 
 export async function listIssues(req, res) {
@@ -52,10 +53,6 @@ export async function getIssue(req, res) {
     const { id } = req.params;
     const issue = await findIssueById(id);
     if (!issue) return sendError(res, 404, "Issue not found");
-
-    if (req.user.role === "PM" && issue.project_manager !== req.user.name) {
-      return sendError(res, 403, "Forbidden: Not assigned to this record");
-    }
 
     return sendSuccess(res, issue);
   } catch (err) {
@@ -149,7 +146,7 @@ export async function createIssueHandler(req, res) {
       });
 
       try {
-        const isOnBehalf = created.reported_by && req.user.email && created.reported_by.toLowerCase() !== req.user.email.toLowerCase();
+        const isOnBehalf = !!(created.behalf_of && String(created.behalf_of).trim());
         await sendGovernanceEventMail({
           module: "issue",
           recordId: created.issue_id,
@@ -175,10 +172,15 @@ export async function updateIssueHandler(req, res) {
     if (!isValidBehalfOf(req.body.behalf_of)) {
       return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
     }
-    const existing = await findIssueById(id);
+        const existing = await findIssueById(id);
     if (!existing) return sendError(res, 404, "Issue not found");
 
-    const payload = { ...req.body };
+    // Merge so partial updates (e.g. status-only) do not wipe existing fields
+    const payload = { ...existing, ...req.body };
+    if (req.body.remarks && !req.body.comments) {
+      payload.comments = req.body.remarks;
+    }
+    payload.issue_id = existing.issue_id;
     payload.reported_date = payload.reported_date || payload.identified_date || existing.reported_date;
 
     if (req.user.role !== "ADMIN") {
@@ -191,7 +193,15 @@ export async function updateIssueHandler(req, res) {
     delete payload.identified_by;
 
     const oldStatus = existing.status;
-    const newStatus = payload.status;
+    const newStatus = payload.status || oldStatus;
+
+    const proofError = validateStatusProof({
+      oldStatus,
+      newStatus,
+      remarks: payload.remarks || payload.comments,
+      hasAttachment: Boolean(req.file),
+    });
+    if (proofError) return sendError(res, 400, proofError);
 
     const updated = await updateIssueModel(id, payload);
 
@@ -204,6 +214,7 @@ export async function updateIssueHandler(req, res) {
           old_status: oldStatus,
           new_status: newStatus,
           remarks: payload.remarks || payload.comments,
+          ...attachmentFields(req.file),
         });
       } catch (hErr) {
         console.error("Failed to save issue history entry:", hErr);

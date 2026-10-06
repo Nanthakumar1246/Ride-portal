@@ -5,6 +5,7 @@ import {
   updateAppreciation,
   findAppreciationsByIds,
   deleteMultipleAppreciations,
+  decideAppreciation,
 } from "../models/appreciations.model.js";
 import {
   createAppreciationDocument,
@@ -37,6 +38,9 @@ export async function listAppreciations(req, res) {
   try {
     const user = req.user;
     const augmentedQuery = await applyRoleRestrictions(user, req.query || {});
+    // Drives the approval/20-day visibility rules in buildAppreciationFilters.
+    augmentedQuery.viewerRole = user?.role;
+    augmentedQuery.viewerEmail = user?.email;
     const filters = buildAppreciationFilters(augmentedQuery);
 
     const rows = await findAppreciations(filters);
@@ -58,11 +62,7 @@ export async function getAppreciation(req, res) {
 
     if (!row) return sendError(res, 404, "Appreciation not found");
 
-    if (req.user.role === "PM") {
-      if (row.project_manager !== req.user.name) {
-        return sendError(res, 403, "Forbidden: Not assigned to this record");
-      }
-    } else if (req.user.role !== "ADMIN") {
+    if (req.user.role !== "ADMIN" && req.user.role !== "PM") {
       const assigned = await getAssignedProjects(req.user.id);
       const projectIds = assigned.map(p => p.id);
       if (!projectIds.includes(row.project_id)) {
@@ -90,7 +90,7 @@ export async function uploadAppreciationAttachmentHandler(req, res) {
       appreciation_id: existing.id,
       file_name: req.file.originalname,
       file_type: req.file.mimetype,
-      file_path: req.file.path.replace(/\\/g, "/"),
+      file_path: req.file.path.replace(/\\/g, "/").replace(/^.*?uploads\//i, "uploads/"),
       uploaded_by: req.user.id,
     });
 
@@ -115,28 +115,38 @@ export async function createAppreciationHandler(req, res) {
       );
     }
 
+    // An admin's own appreciation is published immediately; anyone else's
+    // (e.g. a PM's) waits for admin approval before it becomes visible.
+    const isAdmin = String(req.user?.role || "").toUpperCase() === "ADMIN";
+
     const payload = {
       ...req.body,
       recorded_by: req.user.email,
+      status: isAdmin ? "APPROVED" : "PENDING",
     };
 
-    
+
     ["project_id", "project_description", "account"].forEach(f => {
       if (payload[f] === undefined) payload[f] = null;
     });
 
     const created = await createAppreciation(payload);
 
-    try {
-      await sendGovernanceEventMail({
-        module: "appreciation",
-        recordId: created.appreciation_id || req.body.appreciation_id,
-        eventType: "APPRECIATION_SUBMITTED",
-        recordData: created,
-        currentUserEmail: req.user.email
-      });
-    } catch (eErr) {
-      console.error("[Appreciation Email Error]", eErr.message);
+    // The recognition email only goes out once the appreciation is live —
+    // a pending submission must not reach the recognised team members before
+    // an admin has approved it. Approval sends it instead (see decide below).
+    if (isAdmin) {
+      try {
+        await sendGovernanceEventMail({
+          module: "appreciation",
+          recordId: created.appreciation_id || req.body.appreciation_id,
+          eventType: "APPRECIATION_SUBMITTED",
+          recordData: created,
+          currentUserEmail: req.user.email
+        });
+      } catch (eErr) {
+        console.error("[Appreciation Email Error]", eErr.message);
+      }
     }
 
     return sendSuccess(res, created, 201);
@@ -152,11 +162,10 @@ export async function updateAppreciationHandler(req, res) {
     if (!isValidBehalfOf(req.body.behalf_of)) {
       return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
     }
-
-    const existing = await findAppreciationById(id);
+        const existing = await findAppreciationById(id);
     if (!existing) return sendError(res, 404, "Appreciation not found");
 
-    
+
 
     const updated = await updateAppreciation(id, {
       ...req.body,
@@ -180,6 +189,65 @@ export async function updateAppreciationHandler(req, res) {
   } catch (err) {
     console.error("Error updating appreciation:", err);
     return sendError(res, 500, `Failed to update appreciation: ${err.message}`);
+  }
+}
+
+/**
+ * Admin approves or rejects a submitted appreciation.
+ * Body: { decision: "APPROVED" | "REJECTED" }
+ */
+export async function decideAppreciationHandler(req, res) {
+  try {
+    if (String(req.user?.role || "").toUpperCase() !== "ADMIN") {
+      return sendError(res, 403, "Only an admin can approve or reject an appreciation");
+    }
+
+    const { id } = req.params;
+    const status = String(req.body?.decision || "").toUpperCase();
+    if (!["APPROVED", "REJECTED"].includes(status)) {
+      return sendError(res, 400, "decision must be APPROVED or REJECTED");
+    }
+
+    const existing = await findAppreciationById(id);
+    if (!existing) return sendError(res, 404, "Appreciation not found");
+
+    const decided = await decideAppreciation(existing.id, {
+      status,
+      approvedBy: req.user.email,
+    });
+
+    try {
+      await createModuleHistory({
+        module: "appreciations",
+        record_id: existing.appreciation_id || existing.id,
+        updated_by: req.user.email,
+        old_status: existing.status,
+        new_status: status,
+        remarks: req.body?.comment || `Appreciation ${status.toLowerCase()} by admin`,
+      });
+    } catch (hErr) {
+      console.error("Failed to save appreciation decision history:", hErr);
+    }
+
+    // Now that it is live, the recognised team members get their email.
+    if (status === "APPROVED") {
+      try {
+        await sendGovernanceEventMail({
+          module: "appreciation",
+          recordId: decided.appreciation_id || existing.appreciation_id,
+          eventType: "APPRECIATION_SUBMITTED",
+          recordData: decided,
+          currentUserEmail: req.user.email,
+        });
+      } catch (eErr) {
+        console.error("[Appreciation Email Error]", eErr.message);
+      }
+    }
+
+    return sendSuccess(res, decided);
+  } catch (err) {
+    console.error("Error deciding appreciation:", err);
+    return sendError(res, 500, "Failed to process the approval decision");
   }
 }
 

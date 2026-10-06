@@ -1,6 +1,7 @@
 
 import pool from "../db.js";
 import { createResolutionNotification } from "../models/notifications.model.js";
+import { buildPmCreatorAndClause } from "../utils/filters.utils.js";
 
 
 
@@ -236,26 +237,40 @@ export async function deleteMultipleRisks(ids) {
   return rowCount;
 }
 
-export async function createRiskHistory({ risk_id, updated_by, old_status, new_status, remarks }) {
+export async function createRiskHistory({ risk_id, updated_by, old_status, new_status, remarks, attachment_name, attachment_path }) {
   const sql = `
-    INSERT INTO risk_history (risk_id, updated_by, old_status, new_status, remarks)
-    VALUES ($1, $2, $3, $4, $5)
+    INSERT INTO risk_history (risk_id, updated_by, old_status, new_status, remarks, attachment_name, attachment_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7)
     RETURNING *;
   `;
-  const { rows } = await pool.query(sql, [risk_id, updated_by || null, old_status || null, new_status || null, remarks || null]);
+  const { rows } = await pool.query(sql, [
+    risk_id,
+    updated_by || null,
+    old_status || null,
+    new_status || null,
+    remarks || null,
+    attachment_name || null,
+    attachment_path || null,
+  ]);
   return rows[0];
 }
 
-export async function findRiskHistory(risk_id, programManager = null) {
+export async function findRiskHistory(risk_id, pmScope = null) {
+  const pmUser = pmScope && (pmScope.id || pmScope.email || pmScope.name)
+    ? { role: "PM", id: pmScope.id, email: pmScope.email, name: pmScope.name }
+    : null;
+
   if (!risk_id || risk_id === "ALL") {
-    if (programManager) {
+    if (pmUser) {
+      const params = [];
+      const clause = buildPmCreatorAndClause("risks", pmUser, params, { alias: "r" });
       const sql = `
         SELECT rh.* FROM risk_history rh
         JOIN risks r ON r.risk_id = rh.risk_id
-        WHERE r.project_manager::text = $1::text
+        WHERE 1=1${clause}
         ORDER BY rh.created_at DESC LIMIT 50;
       `;
-      const { rows } = await pool.query(sql, [programManager]);
+      const { rows } = await pool.query(sql, params);
       return rows;
     }
     const sql = `SELECT * FROM risk_history ORDER BY created_at DESC LIMIT 50;`;
@@ -263,15 +278,17 @@ export async function findRiskHistory(risk_id, programManager = null) {
     return rows;
   }
 
-  if (programManager) {
+  if (pmUser) {
+    const params = [risk_id];
+    const clause = buildPmCreatorAndClause("risks", pmUser, params, { alias: "r" });
     const sql = `
       SELECT rh.* FROM risk_history rh
       JOIN risks r ON r.risk_id = rh.risk_id
       WHERE (rh.risk_id = $1 OR rh.risk_id = (SELECT risk_id FROM risks WHERE id::text = $1))
-        AND r.project_manager::text = $2::text
+        ${clause}
       ORDER BY rh.created_at DESC;
     `;
-    const { rows } = await pool.query(sql, [risk_id, programManager]);
+    const { rows } = await pool.query(sql, params);
     return rows;
   }
 

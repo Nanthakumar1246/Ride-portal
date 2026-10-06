@@ -6,6 +6,7 @@ import {
   updateAppreciationHandler,
   deleteAppreciationsHandler,
   uploadAppreciationAttachmentHandler,
+  decideAppreciationHandler,
 } from "../controllers/appreciations.controller.js";
 import { createUpload } from "../config/multer.config.js";
 
@@ -17,5 +18,6 @@ router.post("/", createAppreciationHandler);
 router.put("/:id", updateAppreciationHandler);
 router.post("/delete-multiple", deleteAppreciationsHandler);
 router.post("/:id/attachment", upload.single("attachment"), uploadAppreciationAttachmentHandler);
+router.post("/:id/decide", decideAppreciationHandler);
 
 export default router;

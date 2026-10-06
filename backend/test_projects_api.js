@@ -58,7 +58,7 @@ async function testProjectsApi() {
     console.log("   Status:", mgrRes.status);
     const mgrData = await mgrRes.json();
     console.log("   PMs:", mgrData.project_managers?.length || 0);
-    console.log("   Program Managers:", mgrData.program_managers?.length || 0);
+    console.log("   Project Managers:", mgrData.program_managers?.length || 0);
     console.log();
 
     // 5. GET /api/projects/templates

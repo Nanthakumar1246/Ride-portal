@@ -49,6 +49,27 @@ export async function listAllUsers() {
   return result.rows;
 }
 
+export async function listAdminPmUsers() {
+  const result = await db.query(
+    `SELECT id, name, email, role, is_active, created_at
+     FROM users
+     WHERE UPPER(role) IN ('ADMIN', 'PM')
+     ORDER BY UPPER(role) ASC, name ASC`
+  );
+  return result.rows;
+}
+
+export async function deleteUserById(userId) {
+  const result = await db.query(
+    `DELETE FROM users
+     WHERE id = $1
+       AND UPPER(role) IN ('ADMIN', 'PM')
+     RETURNING id, name, email, role`,
+    [userId]
+  );
+  return result.rows[0] || null;
+}
+
 
 export async function getAssignedProjects(userId) {
   const result = await db.query(

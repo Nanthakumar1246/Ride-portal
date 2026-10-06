@@ -18,6 +18,7 @@ import {
 import { buildDependencyFilters, applyRoleRestrictions } from "../utils/filters.utils.js";
 import { getAssignedProjects } from "../models/users.model.js";
 import { isValidBehalfOf } from "../utils/validation.utils.js";
+import { validateStatusProof, attachmentFields } from "../utils/statusProof.utils.js";
 import { sendSuccess, sendError } from "../utils/response.utils.js";
 import { sendGovernanceEventMail } from "../utils/email.utils.js";
 import { notifyRecordEvent } from "../utils/notify.utils.js";
@@ -43,10 +44,6 @@ export async function getDependency(req, res) {
     const { id } = req.params;
     const dep = await findDependencyById(id);
     if (!dep) return sendError(res, 404, "Dependency not found");
-
-    if (req.user.role === "PM" && dep.project_manager !== req.user.name) {
-      return sendError(res, 403, "Forbidden: Not assigned to this record");
-    }
 
     return sendSuccess(res, dep);
   } catch (err) {
@@ -104,7 +101,7 @@ export async function createDependencyHandler(req, res) {
     }
 
     try {
-      const isOnBehalf = created.reported_by && req.user?.email && created.reported_by.toLowerCase() !== req.user.email.toLowerCase();
+      const isOnBehalf = !!(created.behalf_of && String(created.behalf_of).trim());
       await sendGovernanceEventMail({
         module: "dependency",
         recordId: created.dependency_id,
@@ -127,17 +124,30 @@ export async function createDependencyHandler(req, res) {
 export async function updateDependencyHandler(req, res) {
   try {
     const { id } = req.params;
-    const payload = req.body;
 
-    if (!isValidBehalfOf(payload.behalf_of)) {
+    if (!isValidBehalfOf(req.body.behalf_of)) {
       return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
     }
-
-    const existing = await findDependencyById(id);
+        const existing = await findDependencyById(id);
     if (!existing) return sendError(res, 404, "Dependency not found");
 
+    // Merge so partial updates (e.g. status-only) do not wipe existing fields
+    const payload = { ...existing, ...req.body };
+    if (req.body.remarks && !req.body.comments) {
+      payload.comments = req.body.remarks;
+    }
+    payload.dependency_id = existing.dependency_id;
+
     const oldStatus = existing.status;
-    const newStatus = payload.status;
+    const newStatus = payload.status || oldStatus;
+
+    const proofError = validateStatusProof({
+      oldStatus,
+      newStatus,
+      remarks: payload.remarks || payload.comments,
+      hasAttachment: Boolean(req.file),
+    });
+    if (proofError) return sendError(res, 400, proofError);
 
     const updated = await updateDependency(id, payload);
     if (!updated) return sendError(res, 404, "Dependency not found");
@@ -152,6 +162,7 @@ export async function updateDependencyHandler(req, res) {
           old_status: oldStatus,
           new_status: newStatus,
           remarks: payload.remarks || payload.comments,
+          ...attachmentFields(req.file),
         });
       } catch (hErr) {
         console.error("Failed to save dependency history entry:", hErr);

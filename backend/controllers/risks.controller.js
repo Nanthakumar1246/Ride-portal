@@ -17,6 +17,7 @@ import { decideNotification } from "../models/notifications.model.js";
 import { sendNewItemEmailNotification, sendGovernanceEventMail } from "../utils/email.utils.js";
 import { notifyRecordEvent } from "../utils/notify.utils.js";
 import { isValidBehalfOf } from "../utils/validation.utils.js";
+import { validateStatusProof, attachmentFields } from "../utils/statusProof.utils.js";
 
 function toYYYYMMDD(date) {
   if (!date) return null;
@@ -46,10 +47,6 @@ export async function getRisk(req, res) {
     const risk = await findRiskById(req.params.id);
     if (!risk) return sendError(res, 404, "Risk not found");
 
-    if (req.user.role === "PM" && risk.project_manager !== req.user.name) {
-      return sendError(res, 403, "Forbidden: Not assigned to this record");
-    }
-
     return sendSuccess(res, risk);
   } catch (err) {
     return sendError(res, 500, "Failed to get risk");
@@ -61,6 +58,9 @@ export async function createRiskHandler(req, res) {
   try {
     if (!isValidBehalfOf(req.body.behalf_of)) {
       return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
+    }
+    if (!req.body.risk_description || !String(req.body.risk_description).trim()) {
+      return sendError(res, 400, "Risk Description is required");
     }
 
     const { generateEntityId } = await import("../utils/idGenerator.js");
@@ -179,7 +179,7 @@ export async function createRiskHandler(req, res) {
     // Always Dispatch Outlook Email Notification via Microsoft Graph API
     try {
       const userEmail = req.user?.email || payload.identified_by || "santhosh.b@arche.global";
-      const isOnBehalf = created.identified_by && userEmail && created.identified_by.toLowerCase() !== userEmail.toLowerCase();
+      const isOnBehalf = !!(created.behalf_of && String(created.behalf_of).trim());
       
       console.log(`[Outlook Email Integration] Dispatching email notification for risk creation ${riskCode}...`);
       await sendGovernanceEventMail({
@@ -231,9 +231,16 @@ export async function updateRiskHandler(req, res) {
       return p * i;
     };
 
-    const payload = { ...req.body };
-    const prob = payload.probability !== undefined ? payload.probability : existing.probability;
-    const imp = payload.impact !== undefined ? payload.impact : existing.impact;
+    // Merge so partial updates (e.g. status-only) do not wipe existing fields
+    const payload = { ...existing, ...req.body };
+    if (req.body.remarks && !req.body.comments) {
+      payload.comments = req.body.remarks;
+    }
+    // Never allow sparse updates to clear the business id
+    payload.risk_id = existing.risk_id;
+
+    const prob = req.body.probability !== undefined ? req.body.probability : existing.probability;
+    const imp = req.body.impact !== undefined ? req.body.impact : existing.impact;
 
     payload.probability = sanitizeInt(prob);
     payload.impact = sanitizeInt(imp);
@@ -252,9 +259,15 @@ export async function updateRiskHandler(req, res) {
       normalize(oldStatus) !== "resolved" &&
       normalize(newStatus) === "resolved";
 
-    const updated = await updateRisk(id, {
-      ...payload,
+    const proofError = validateStatusProof({
+      oldStatus,
+      newStatus,
+      remarks: payload.remarks || payload.comments,
+      hasAttachment: Boolean(req.file),
     });
+    if (proofError) return sendError(res, 400, proofError);
+
+    const updated = await updateRisk(id, payload);
 
     // Save history timeline entry
     if (payload.remarks || (newStatus && oldStatus !== newStatus)) {
@@ -265,6 +278,7 @@ export async function updateRiskHandler(req, res) {
           old_status: oldStatus,
           new_status: newStatus,
           remarks: payload.remarks || payload.comments || "Updated Risk details",
+          ...attachmentFields(req.file),
         });
       } catch (hErr) {
         console.error("Failed to save risk history entry:", hErr);
@@ -320,8 +334,10 @@ export async function updateRiskHandler(req, res) {
 export async function getRiskHistoryHandler(req, res) {
   try {
     const { id } = req.params;
-    const programManager = req.user?.role === "PM" ? req.user.name : null;
-    const history = await findRiskHistory(id, programManager);
+    const pmScope = String(req.user?.role || "").toUpperCase() === "PM"
+      ? { id: req.user.id, email: req.user.email, name: req.user.name }
+      : null;
+    const history = await findRiskHistory(id, pmScope);
     return sendSuccess(res, history);
   } catch (err) {
     console.error("Failed to get risk history", err);

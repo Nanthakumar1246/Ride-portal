@@ -47,13 +47,15 @@ export async function createRiskApi(payload) {
 }
 
 export async function updateRiskApi(id, payload) {
+  // A status update that carries a file arrives as FormData; the browser must
+  // set its own multipart boundary, so the JSON Content-Type is omitted.
+  const isFormData = typeof FormData !== "undefined" && payload instanceof FormData;
   const res = await fetch(`${BASE_URL}/risks/${id}`, {
     method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      ...authHeaders(),
-    },
-    body: JSON.stringify(payload),
+    headers: isFormData
+      ? { ...authHeaders() }
+      : { "Content-Type": "application/json", ...authHeaders() },
+    body: isFormData ? payload : JSON.stringify(payload),
   });
   return handleResponse(res);
 }

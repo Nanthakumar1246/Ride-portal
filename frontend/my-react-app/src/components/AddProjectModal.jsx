@@ -25,7 +25,13 @@ const AddProjectModal = ({ isOpen, onClose, onSuccess }) => {
     setLoading(true);
     setError("");
     try {
-      await createProject(formData);
+      await createProject({
+        name: formData.name,
+        manual_project_id: formData.name,
+        account: formData.account,
+        description: formData.description,
+        project_description: formData.description,
+      });
       onSuccess();
       onClose();
       setFormData({ name: "", account: "", description: "" });
@@ -75,16 +81,7 @@ const AddProjectModal = ({ isOpen, onClose, onSuccess }) => {
             />
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 mb-1">Project Description</label>
-            <textarea
-              className="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:ring-2 focus:ring-black outline-none"
-              rows={3}
-              placeholder="Brief description of the project"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-            />
-          </div>
+          
 
           <div className="flex gap-3 pt-4">
             <button

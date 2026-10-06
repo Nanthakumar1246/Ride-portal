@@ -1,6 +1,7 @@
 
 import pool from "../db.js";
 import { listMembersByManager } from "../models/managers.model.js";
+import { buildPmCreatorAndClause, isPmRole } from "../utils/filters.utils.js";
 
 const safeCount = async (sql, params = []) => {
   try {
@@ -26,8 +27,8 @@ export async function getDashboardMetrics(req, res) {
         managerMembers = await listMembersByManager(managerParam);
     }
 
-    // PM-role users are scoped to their own Program Manager records, regardless of the manager param.
-    const pmName = req.user?.role === "PM" ? req.user.name : null;
+    // PM users are scoped to records they created / reported.
+    const pmUser = isPmRole(req.user) ? req.user : null;
 
     const buildFilters = (baseTable) => {
       const filters = { where: " WHERE 1=1 ", params: [] };
@@ -38,25 +39,37 @@ export async function getDashboardMetrics(req, res) {
         filters.params.push(priorityParam);
       }
 
-      if (pmName) {
-        filters.where += ` AND project_manager::text = $${i++}::text `;
-        filters.params.push(pmName);
+      if (pmUser) {
+        // buildPmCreatorAndClause pushes into params and returns " AND (...)"
+        const clause = buildPmCreatorAndClause(baseTable, pmUser, filters.params);
+        filters.where += clause;
+        i = filters.params.length + 1;
       }
 
       const fieldMap = { risks: 'identified_by', issues: 'reported_by', actions: 'created_by', dependencies: 'reported_by', escalations: 'reported_by' };
-      const col = fieldMap[baseTable] || 'reported_by';
+      const ownerCol = fieldMap[baseTable] || 'reported_by';
 
-      if (managerParam && managerParam !== 'All') {
+      if (!pmUser && managerParam && managerParam !== 'All') {
         const clauses = [];
+        // Primary: Headed By (program_manager) matches selected manager
+        clauses.push(`program_manager::text ILIKE $${i++}`);
+        filters.params.push(managerParam);
+
         if (managerMembers && managerMembers.length > 0) {
           managerMembers.forEach(m => {
-            clauses.push(`${col}::text = $${i++}::text`); filters.params.push(m);
-            clauses.push(`${col}::text = $${i++}::text`); filters.params.push(`${managerParam} - ${m}`);
+            clauses.push(`project_manager::text = $${i++}`);
+            filters.params.push(m);
+            clauses.push(`${ownerCol}::text = $${i++}`);
+            filters.params.push(m);
+            clauses.push(`${ownerCol}::text = $${i++}`);
+            filters.params.push(`${managerParam} - ${m}`);
           });
         }
-        const mIdx = i++;
-        clauses.push(`${col}::text = $${mIdx}::text`); filters.params.push(managerParam);
-        clauses.push(`${col}::text LIKE $${mIdx}::text || ' - %'`);
+        clauses.push(`${ownerCol}::text = $${i++}`);
+        filters.params.push(managerParam);
+        clauses.push(`${ownerCol}::text ILIKE $${i++}`);
+        filters.params.push(`${managerParam}%`);
+
         filters.where += ` AND (${clauses.join(' OR ')}) `;
       }
       return filters;
@@ -84,11 +97,11 @@ export async function getDashboardMetrics(req, res) {
     const commonQ = `SELECT COUNT(*) FROM (${g.sql}) t`;
 
     const [total_open, total_on_hold, resolved, approved, cancelled, total_items] = await Promise.all([
-      safeCount(`${commonQ} WHERE status = 'Open'`, g.params),
-      safeCount(`${commonQ} WHERE status IN ('In Progress', 'On Hold')`, g.params),
-      safeCount(`${commonQ} WHERE status = 'Resolved'`, g.params),
-      safeCount(`${commonQ} WHERE status = 'Approved & Closed'`, g.params),
-      safeCount(`${commonQ} WHERE status = 'Cancelled'`, g.params),
+      safeCount(`${commonQ} WHERE status ILIKE '%open%' OR status ILIKE '%progress%' OR status ILIKE '%submitted%'`, g.params),
+      safeCount(`${commonQ} WHERE status ILIKE '%hold%'`, g.params),
+      safeCount(`${commonQ} WHERE status ILIKE '%resolved%' OR status ILIKE '%closed%' OR status ILIKE '%acknowledged%' OR status ILIKE '%approved%'`, g.params),
+      safeCount(`${commonQ} WHERE status ILIKE '%approved%'`, g.params),
+      safeCount(`${commonQ} WHERE status ILIKE '%cancel%'`, g.params),
       safeCount(commonQ, g.params)
     ]);
 

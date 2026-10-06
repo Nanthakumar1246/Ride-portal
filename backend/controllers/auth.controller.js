@@ -2,23 +2,28 @@ import db from "../db.js";
 import * as usersModel from "../models/users.model.js";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import twilio from "twilio";
-import nodemailer from "nodemailer";
+import { sendMailViaGraph } from "../integrations/outlook/graph_client.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
-const ADMIN_CREDENTIALS = {
-  "admin@arche.global": "Admin@Arche2026",
-  "sindhu@arche.global": "Sindhu@Arche2026",
-  "rachana.pk@arche.global": "Rachana@Arche2026",
-  "santhosh.b@arche.global": "Santhosh@Arche2026",
-  "sukanya.p@arche.global": "Sukanya@Arche2026",
-  "ajaykumar.j@arche.global": "Ajaykumar@Arche2026",
-  "sathishbalaji.k@arche.global": "Sathishbalaji@Arche2026"
-};
+async function sendPasswordResetOtpEmail(toEmail, otp) {
+  const subject = "Your RIDE+ Password Reset OTP";
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:480px;line-height:1.5;color:#0f172a">
+      <h2 style="margin:0 0 12px;font-size:18px">RIDE+ Password Reset</h2>
+      <p style="margin:0 0 12px">Use this one-time password to reset your account password:</p>
+      <p style="margin:0 0 16px;font-size:28px;font-weight:700;letter-spacing:4px">${otp}</p>
+      <p style="margin:0;color:#64748b;font-size:13px">This OTP expires in 10 minutes. If you did not request a reset, you can ignore this email.</p>
+    </div>
+  `;
 
-const ADMIN_WHITELIST = Object.keys(ADMIN_CREDENTIALS);
-
+  // Use Microsoft Graph only (SMTP EMAIL_USER/EMAIL_PASS auth is broken / 535)
+  await sendMailViaGraph({
+    to: toEmail,
+    subject,
+    htmlContent: html,
+  });
+}
 
 export async function loginHandler(req, res) {
   try {
@@ -36,22 +41,10 @@ export async function loginHandler(req, res) {
     }
 
 
+    // Accounts (ADMIN, PM, or otherwise) exist only if provisioned in the
+    // database — via the Admin > Add User screen, or the BM approval flow.
+    // No credentials are hardcoded or auto-created here.
     let user = await usersModel.findByEmail(emailLower);
-
-
-
-    if (ADMIN_WHITELIST.includes(emailLower) && !user) {
-      const specificPass = ADMIN_CREDENTIALS[emailLower] || "Admin@Arche2026";
-      const defaultHash = await bcrypt.hash(specificPass, 10);
-
-      user = await usersModel.createUser({
-        name: emailLower.split("@")[0].split(".")[0], // Simple name extraction
-        email: emailLower,
-        password_hash: defaultHash,
-        role: "ADMIN"
-      });
-      console.log(`[Auth] Auto-created ADMIN user: ${emailLower}`);
-    }
 
 
     if (!user) {
@@ -239,54 +232,24 @@ export async function forgotPasswordOtpHandler(req, res) {
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
-    // mobileNumber is no longer required, so we just pass null for it
     await usersModel.saveOtp(user.id, otp, null);
 
-    console.log(`\n========================================`);
-    console.log(`MOCK EMAIL LOG: Preparing to send OTP ${otp} to ${user.email}`);
-    console.log(`========================================\n`);
-
-    let emailSent = false;
-
-    // Try to send real Email via Outlook/SMTP if configured
-    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-      try {
-        const transporter = nodemailer.createTransport({
-          host: "smtp.office365.com",
-          port: 587,
-          secure: false, 
-          requireTLS: true,
-          auth: {
-            user: process.env.EMAIL_USER,
-            pass: process.env.EMAIL_PASS,
-          }
-        });
-
-        await transporter.sendMail({
-          from: `"RIDE+ Security" <${process.env.EMAIL_USER}>`,
-          to: user.email,
-          subject: "Your RIDE+ Password Reset OTP",
-          text: `Your RIDE+ Password Reset OTP is: ${otp}\n\nIt will expire in 10 minutes.`,
-          html: `<h3>RIDE+ Security</h3><p>Your Password Reset OTP is: <strong>${otp}</strong></p><p>It will expire in 10 minutes.</p>`
-        });
-        
-        console.log(`Real Email sent successfully to ${user.email}!`);
-        emailSent = true;
-      } catch (emailErr) {
-        console.error("Failed to send real Email:", emailErr.message);
-      }
-    } else {
-      console.log("NOTE: Real Email not sent. Missing EMAIL_USER and EMAIL_PASS in .env file.");
+    // Deliver OTP only to the email entered on the login form — never log the code
+    try {
+      await sendPasswordResetOtpEmail(emailLower, otp);
+      console.log(`[ForgotPassword] OTP email sent to ${emailLower}`);
+    } catch (emailErr) {
+      console.error("[ForgotPassword] Failed to send OTP email:", emailErr.message);
+      await usersModel.clearOtp(user.id);
+      return res.status(502).json({
+        success: false,
+        message: "Could not send OTP email. Please try again later or contact an admin.",
+      });
     }
 
-    // Try to send real SMS via Twilio if configured
-    let smsSent = false;
-    // Mobile number removed from requirement, skipping SMS logic
-
-    return res.status(200).json({ 
-      success: true, 
-      message: emailSent ? "OTP sent successfully to your Email!" : "OTP generated! Check the backend terminal to see it." 
+    return res.status(200).json({
+      success: true,
+      message: `OTP sent successfully to ${emailLower}`,
     });
   } catch (err) {
     console.error("Forgot password OTP error:", err);

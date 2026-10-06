@@ -7,7 +7,6 @@ const tableConfig = {
       { key: "status", label: "Status" },
       { key: "priority", label: "Priority" },
       { key: "risk_title", label: "Title" },
-      { key: "identified_date", label: "Identified Date" },
     ],
   },
   issues: {

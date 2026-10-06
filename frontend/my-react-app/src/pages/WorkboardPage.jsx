@@ -252,18 +252,6 @@ const COMMON_FIELD_GUIDANCE_MAP = {
       "Trying to manually edit this field (it will auto-fill)."
     ]
   },
-  project_description: {
-    title: "Project Description",
-    purpose: "Brief summary of the selected project's scope.",
-    whatToEnter: [
-      "This is read-only and automatically populated based on the selected Project ID.",
-      "Summarizes the scope of work."
-    ],
-    example: "Migration of legacy databases to AWS Aurora PostgreSQL.",
-    commonMistakes: [
-      "Trying to manually edit this field."
-    ]
-  },
   status: {
     title: "Status",
     purpose: "The current lifecycle state of this record.",
@@ -1100,7 +1088,7 @@ const WorkboardPage = ({
       .catch(() => setHeadedByOptions([]));
   }, [moduleKey]);
 
-  // Program Manager list filtered by the selected Headed By
+  // Project Manager list filtered by the selected Headed By
   useEffect(() => {
     const headedBy = formData.program_manager;
     if (!headedBy) {
@@ -2283,7 +2271,7 @@ const WorkboardPage = ({
                                       onBlur={() => setActiveField(null)}
                                       className="w-full h-10 px-3 py-2 rounded-lg text-xs text-gray-900 border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white hover:bg-gray-50/20 transition-all duration-150 shadow-sm"
                                     >
-                                      <option value="">{formData.program_manager ? "Select Program Manager..." : "Select Headed By first"}</option>
+                                      <option value="">{formData.program_manager ? "Select Project Manager..." : "Select Headed By first"}</option>
                                       {programManagerOptions.map((opt) => (
                                         <option key={opt} value={opt}>{opt}</option>
                                       ))}
@@ -2488,7 +2476,7 @@ const WorkboardPage = ({
                               onBlur={() => setActiveField(null)}
                               className="w-full h-10 px-3 py-2 rounded-lg text-xs text-gray-900 border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white hover:bg-gray-50/20 transition-all duration-150 shadow-sm"
                             >
-                              <option value="">{formData.program_manager ? "Select Program Manager..." : "Select Headed By first"}</option>
+                              <option value="">{formData.program_manager ? "Select Project Manager..." : "Select Headed By first"}</option>
                               {programManagerOptions.map((opt) => (
                                 <option key={opt} value={opt}>{opt}</option>
                               ))}
@@ -2706,7 +2694,7 @@ const WorkboardPage = ({
                           onBlur={() => setActiveField(null)}
                           className="w-full h-10 px-3 py-2 rounded-lg text-xs text-gray-900 border border-gray-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 outline-none bg-white hover:bg-gray-50/20 transition-all duration-150 shadow-sm"
                         >
-                          <option value="">{formData.program_manager ? "Select Program Manager..." : "Select Headed By first"}</option>
+                          <option value="">{formData.program_manager ? "Select Project Manager..." : "Select Headed By first"}</option>
                           {programManagerOptions.map((opt) => (
                             <option key={opt} value={opt}>{opt}</option>
                           ))}

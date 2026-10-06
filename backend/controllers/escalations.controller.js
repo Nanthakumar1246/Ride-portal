@@ -19,6 +19,7 @@ import { sendGovernanceEventMail } from "../utils/email.utils.js";
 import { notifyRecordEvent } from "../utils/notify.utils.js";
 import { createModuleHistory } from "../models/moduleHistory.model.js";
 import { isValidBehalfOf } from "../utils/validation.utils.js";
+import { validateStatusProof, attachmentFields } from "../utils/statusProof.utils.js";
 import pool from "../db.js";
 
 export async function listEscalations(req, res) {
@@ -39,11 +40,7 @@ export async function getEscalation(req, res) {
     const row = await findEscalationById(req.params.id);
     if (!row) return sendError(res, 404, "Escalation not found");
 
-    if (req.user.role === "PM") {
-      if (row.project_manager !== req.user.name) {
-        return sendError(res, 403, "Forbidden: Not assigned to this record");
-      }
-    } else if (req.user.role !== "ADMIN") {
+    if (req.user.role !== "ADMIN" && req.user.role !== "PM") {
       const assigned = await getAssignedProjects(req.user.id);
       const projectIds = assigned.map(p => p.id);
       if (!projectIds.includes(row.project_id)) {
@@ -107,7 +104,7 @@ export async function createEscalationHandler(req, res) {
     }
 
     try {
-      const isOnBehalf = created.reported_by && req.user?.email && created.reported_by.toLowerCase() !== req.user.email.toLowerCase();
+      const isOnBehalf = !!(created.behalf_of && String(created.behalf_of).trim());
       await sendGovernanceEventMail({
         module: "escalation",
         recordId: created.escalation_id,
@@ -130,17 +127,30 @@ export async function createEscalationHandler(req, res) {
 export async function updateEscalationHandler(req, res) {
   try {
     const { id } = req.params;
-    const payload = req.body;
 
-    if (!isValidBehalfOf(payload.behalf_of)) {
+    if (!isValidBehalfOf(req.body.behalf_of)) {
       return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
     }
-
-    const existing = await findEscalationById(id);
+        const existing = await findEscalationById(id);
     if (!existing) return sendError(res, 404, "Escalation not found");
 
+    // Merge so partial updates (e.g. status-only) do not wipe existing fields
+    const payload = { ...existing, ...req.body };
+    if (req.body.remarks && !req.body.comments) {
+      payload.comments = req.body.remarks;
+    }
+    payload.escalation_id = existing.escalation_id;
+
     const oldStatus = existing.status;
-    const newStatus = payload.status;
+    const newStatus = payload.status || oldStatus;
+
+    const proofError = validateStatusProof({
+      oldStatus,
+      newStatus,
+      remarks: payload.remarks || payload.comments,
+      hasAttachment: Boolean(req.file),
+    });
+    if (proofError) return sendError(res, 400, proofError);
 
     const updated = await updateEscalation(id, payload);
     if (!updated) return sendError(res, 404, "Escalation not found");
@@ -155,6 +165,7 @@ export async function updateEscalationHandler(req, res) {
           old_status: oldStatus,
           new_status: newStatus,
           remarks: payload.remarks || payload.comments,
+          ...attachmentFields(req.file),
         });
       } catch (hErr) {
         console.error("Failed to save escalation history entry:", hErr);

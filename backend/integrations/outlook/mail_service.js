@@ -56,7 +56,7 @@ async function resolveToEmails(rawValues) {
  * Recipient Routing.
  * To: Mitigation Owner (falls back to the common mailbox if it can't be resolved,
  * so a notification is never silently dropped).
- * Cc: Log Owner, Program Manager (projects.project_manager), Headed By
+ * Cc: Log Owner, Project Manager (projects.project_manager), Headed By
  * (projects.program_manager), Behalf Of, and the Governance Team mailbox —
  * whichever of these resolve to a real address, minus anything already in To.
  */
@@ -66,6 +66,39 @@ export async function resolveRecipients(recordData = {}, overrideEmail = null) {
   }
 
   const logOwnerRaw = recordData.identified_by || recordData.reported_by || recordData.created_by || recordData.recorded_by;
+
+  // Appreciations have no mitigation_owner — the recipients are whoever was
+  // named in "Team Members Recognized" (a free-text, comma/semicolon
+  // separated list of names and/or emails). The default common mailbox
+  // (santhosh.b@arche.global) must never appear on an appreciation email,
+  // whether as a fallback "to" or picked up incidentally via cc.
+  if (recordData.team_members_recognized !== undefined && recordData.team_members_recognized !== null) {
+    const defaultMailbox = (process.env.DEFAULT_COMMON_MAILBOX || "santhosh.b@arche.global").toLowerCase();
+    const excludeDefault = (list) => (list || []).filter((email) => String(email).toLowerCase() !== defaultMailbox);
+
+    const names = String(recordData.team_members_recognized)
+      .split(/[,;]/)
+      .map((n) => n.trim())
+      .filter(Boolean);
+
+    const [toEmailsRaw, ccEmailsRaw] = await Promise.all([
+      resolveToEmails(names),
+      resolveToEmails([recordData.recorded_by, recordData.project_manager, recordData.program_manager, recordData.behalf_of]),
+    ]);
+
+    const to = excludeDefault(toEmailsRaw);
+    const ccEmails = excludeDefault(ccEmailsRaw);
+    const cc = [...new Set([...ccEmails, GOVERNANCE_TEAM_MAILBOX])].filter(
+      (email) => !to.includes(email) && email.toLowerCase() !== defaultMailbox
+    );
+
+    if (to.length > 0) {
+      return { to, cc };
+    }
+    // No recognized team member resolved to a real address — fall through
+    // to the governance mailbox only, never the default common mailbox.
+    return { to: [GOVERNANCE_TEAM_MAILBOX], cc: ccEmails.filter((email) => email !== GOVERNANCE_TEAM_MAILBOX) };
+  }
 
   const [toEmails, ccEmails] = await Promise.all([
     resolveToEmails([recordData.mitigation_owner]),
@@ -97,7 +130,8 @@ export async function recordEmailAudit({
   sender,
   subject,
   status,
-  errorMessage = null
+  errorMessage = null,
+  internetMessageId = null
 }) {
   try {
     const sql = `
@@ -109,9 +143,10 @@ export async function recordEmailAudit({
         sender,
         subject,
         status,
-        error_message
+        error_message,
+        internet_message_id
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
       RETURNING *;
     `;
     const values = [
@@ -122,7 +157,8 @@ export async function recordEmailAudit({
       sender || process.env.MICROSOFT_SENDER_EMAIL || "rideplus@arche.global",
       subject,
       status,
-      errorMessage
+      errorMessage,
+      internetMessageId
     ];
     await pool.query(sql, values);
   } catch (err) {
@@ -168,6 +204,9 @@ function formatDate(value) {
 }
 
 function mitigationOwnerName(recordData = {}) {
+  if (recordData.team_members_recognized) {
+    return String(recordData.team_members_recognized).split(/[,;]/)[0].trim() || "Team Member";
+  }
   return recordData.mitigation_owner || "Team Member";
 }
 
@@ -203,6 +242,7 @@ export function getCoreDetailsRows(module, recordId, recordData = {}) {
         ["Mitigation Owner", recordData.mitigation_owner],
         ["Target Mitigation Date", formatDate(recordData.target_mitigation_date)],
         ["Risk Title", recordData.risk_title],
+        ["Risk Description", recordData.risk_description],
       ];
     case "issue":
       return [
@@ -382,34 +422,58 @@ export async function sendGovernanceEventMail({
 
   switch (eventType) {
     case "NEW_RECORD":
-    case "ON_BEHALF_CREATED":
       subject = `New ${modUpper} Created – ${recordId}`;
       introLine = `A new <strong>${modUpper}</strong> has been created in the <strong>RIDE+ Governance Portal</strong> and has been assigned for your review and necessary action.`;
       requiredAction = "Please review the log and update the mitigation plan and progress through the RIDE+ Portal.";
       break;
 
+    case "ON_BEHALF_CREATED":
+      subject = `New ${modUpper} Created (On Behalf Of ${f.behalfOf}) – ${recordId}`;
+      introLine = `A new <strong>${modUpper}</strong> has been created by <strong>${f.createdBy}</strong> in the <strong>RIDE+ Governance Portal</strong> on behalf of <strong>${f.behalfOf}</strong> and has been assigned for your review and necessary action.`;
+      requiredAction = "Please review the log and update the mitigation plan and progress through the RIDE+ Portal.";
+      break;
+
     case "STATUS_CHANGED": {
-      const statusBefore = recordData.statusBefore || "Open";
       const statusAfter = recordData.statusAfter || recordData.status || "Updated";
       subject = `Status Updated – ${recordId}`;
-      introLine = `The status of the following log has been updated in the <strong>RIDE+ Governance Portal</strong>.`;
-      detailsRows = [...coreRows, ["Status Update", `${statusBefore} → ${statusAfter}`]];
+      introLine = `The status of the following log has been updated in the <strong>RIDE+ Portal</strong>.`;
+
+      // "Created By" and "Mitigation Date" are shown alongside the usual
+      // details. Modules whose core rows already carry a mitigation date
+      // (Risks) are not given a duplicate row.
+      const extraRows = [["Created By", f.createdBy]];
+      const hasMitigationDate = coreRows.some(([label]) => /mitigation date/i.test(label));
+      if (!hasMitigationDate) {
+        extraRows.push(["Mitigation Date", formatDate(f.plannedClosureDate)]);
+      }
+
+      // Only the status the log has moved to — the previous one is not shown.
+      detailsRows = [...coreRows, ...extraRows, ["Status Update", statusAfter]];
       requiredAction = "Please review the latest update and take further action if required.";
       break;
     }
 
     case "DUE_TODAY":
-    case "DUE_TOMORROW":
-    case "DUE_THIS_WEEK": {
-      subject = `TAT Reminder – ${recordId}`;
-      introLine = `This is an automated reminder from the <strong>RIDE+ Governance Portal</strong>. The planned closure date for the following log is approaching.`;
+      subject = `TAT Reminder (Due Today) – ${recordId}`;
+      introLine = `The planned closure date for the following log is <strong>today</strong>.`;
       requiredAction = "Kindly review the log and complete the required actions before the planned closure date to avoid delays.";
       break;
-    }
+
+    case "DUE_TOMORROW":
+      subject = `24-Hour Due Date Alert – ${recordId}`;
+      introLine = `The planned closure date for the following log is in tomorrow.`;
+      requiredAction = "Kindly review the log and complete the required actions before the planned closure date to avoid delays.";
+      break;
+
+    case "DUE_THIS_WEEK":
+      subject = `7-Day Due Date Alert – ${recordId}`;
+      introLine = `The planned closure date for the following log is in 7 days.`;
+      requiredAction = "Kindly review the log and complete the required actions before the planned closure date to avoid delays.";
+      break;
 
     case "INACTIVITY_REMINDER":
-      subject = `No Progress Update – ${recordId}`;
-      introLine = `No progress has been recorded for the following log during the last <strong>2 days</strong>.`;
+      subject = `${modUpper} ${recordId} Not Updated – No Progress for the Past 3 Days`;
+      introLine = `The following log with ID <strong>${recordId}</strong> has not been noticed / updated for the past <strong>3 days</strong> and remains in <strong>${recordData.status || "the same"}</strong> status.`;
       requiredAction = "Please update the latest progress in the RIDE+ Governance Portal so the governance team can track the current status.";
       break;
 
@@ -433,16 +497,26 @@ export async function sendGovernanceEventMail({
       requiredAction = "Please review the action item and update its status through the RIDE+ Portal.";
       break;
 
-    case "APPRECIATION_SUBMITTED":
-      subject = `Appreciation Submitted – ${recordId}`;
-      introLine = `A new <strong>Appreciation</strong> has been submitted in the <strong>RIDE+ Governance Portal</strong>.`;
+    case "APPRECIATION_SUBMITTED": {
+      const fromAccount = pick(recordData.account, recordData.account_name, recordData.project_description) || "your customer/account";
+      subject = `Congratulations! New Appreciation Received – ${recordId}`;
+      introLine = `Congratulations on receiving an appreciation from the <strong>${fromAccount}</strong> in recognition of your contribution. Please keep up the excellent work!`;
+      if (f.behalfOf && f.behalfOf !== "N/A") {
+        introLine += ` This appreciation was submitted by <strong>${f.createdBy}</strong> on behalf of <strong>${f.behalfOf}</strong>.`;
+      }
       requiredAction = "No action required — this is a recognition notice.";
       break;
+    }
 
     default:
       subject = `Governance Event Notification – ${recordId}`;
       introLine = `A governance activity has been recorded in the RIDE+ Governance Portal.`;
   }
+
+  // Keep every email about the same record under one common subject prefix
+  // so mail clients (and the In-Reply-To/References threading below) group
+  // creation, status-update and reminder emails for a record into one trail.
+  subject = `[${modUpper} ${recordId}] ${subject}`;
 
   const htmlContent = buildHtmlTemplate({
     subject,
@@ -454,12 +528,29 @@ export async function sendGovernanceEventMail({
 
   const recipientLog = `${to.join(", ")}${cc.length ? `; CC: ${cc.join(", ")}` : ""}`;
 
+  // Find the most recent prior email sent for this exact record so this one
+  // can be threaded into the same mail trail via In-Reply-To/References.
+  let inReplyToMessageId = null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT internet_message_id FROM email_audit_log
+       WHERE module = $1 AND record_id = $2 AND status = 'SENT' AND internet_message_id IS NOT NULL
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [modUpper, recordId]
+    );
+    inReplyToMessageId = rows[0]?.internet_message_id || null;
+  } catch (lookupErr) {
+    console.warn("[MailService] Could not look up prior message for threading:", lookupErr.message);
+  }
+
   try {
     const result = await sendMailViaGraph({
       to,
       cc,
       subject,
-      htmlContent
+      htmlContent,
+      inReplyToMessageId
     });
 
     await recordEmailAudit({
@@ -470,7 +561,8 @@ export async function sendGovernanceEventMail({
       sender,
       subject,
       status: "SENT",
-      errorMessage: null
+      errorMessage: null,
+      internetMessageId: result.internetMessageId || null
     });
 
     return result;

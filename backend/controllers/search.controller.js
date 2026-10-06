@@ -1,20 +1,15 @@
 import pool from "../db.js";
+import { buildPmCreatorAndClause } from "../utils/filters.utils.js";
 
 export async function globalSearch(req, res) {
   try {
     const q = (req.query.q || "").trim();
     if (!q) return res.json({ success: true, rows: [] });
 
-    const pmName = req.user?.role === "PM" ? req.user.name : null;
-
     const params = [`%${q}%`];
     const searchIdx = 1;
 
-    const pmClause = () => {
-      if (!pmName) return "";
-      params.push(pmName);
-      return ` AND project_manager::text = $${params.length}::text`;
-    };
+    const pmFor = (table) => buildPmCreatorAndClause(table, req.user, params);
 
     const searchCols = (cols) =>
       `(${cols.map((c) => `${c} ILIKE $${searchIdx}`).join(" OR ")})`;
@@ -24,37 +19,37 @@ export async function globalSearch(req, res) {
         risk_description as description, risk_title as title, status, mitigation_owner as owner,
         identified_by as created_by, created_at
       FROM risks
-      WHERE ${searchCols(["risk_title", "risk_description", "risk_id::text", "account", "manual_project_id", "project_description"])}${pmClause()}
+      WHERE ${searchCols(["risk_title", "risk_description", "risk_id::text", "account", "manual_project_id", "project_description"])}${pmFor("risks")}
       UNION ALL
       SELECT 'Issue', id, issue_id, manual_project_id, account,
         issue_description, issue_title, status, assigned_to,
         reported_by, created_at
       FROM issues
-      WHERE ${searchCols(["issue_title", "issue_description", "issue_id::text", "account", "manual_project_id", "project_description"])}${pmClause()}
+      WHERE ${searchCols(["issue_title", "issue_description", "issue_id::text", "account", "manual_project_id", "project_description"])}${pmFor("issues")}
       UNION ALL
       SELECT 'Dependency', id, dependency_id, manual_project_id, account,
         description, dependency_title, status, contact_person,
         reported_by, created_at
       FROM dependencies
-      WHERE ${searchCols(["dependency_title", "description", "dependency_id::text", "account", "manual_project_id", "project_description"])}${pmClause()}
+      WHERE ${searchCols(["dependency_title", "description", "dependency_id::text", "account", "manual_project_id", "project_description"])}${pmFor("dependencies")}
       UNION ALL
       SELECT 'Escalation', id, escalation_id, manual_project_id, account,
         description, title, status, escalated_to,
         reported_by, created_at
       FROM escalations
-      WHERE ${searchCols(["title", "description", "escalation_id::text", "account", "manual_project_id", "project_description"])}${pmClause()}
+      WHERE ${searchCols(["title", "description", "escalation_id::text", "account", "manual_project_id", "project_description"])}${pmFor("escalations")}
       UNION ALL
       SELECT 'Action', id, action_id, NULL::text, account,
         comments, action_title, status, action_owner,
         action_owner, created_at
       FROM actions
-      WHERE ${searchCols(["action_title", "comments", "action_id::text", "action_owner", "account"])}${pmClause()}
+      WHERE ${searchCols(["action_title", "comments", "action_id::text", "action_owner", "account"])}${pmFor("actions")}
       UNION ALL
       SELECT 'Appreciation', id, appreciation_id, manual_project_id, account,
         details, subject, NULL::text, recorded_by,
         recorded_by, created_at
       FROM appreciations
-      WHERE ${searchCols(["subject", "details", "appreciation_id::text", "account", "manual_project_id", "project_description", "customer_name"])}${pmClause()}
+      WHERE ${searchCols(["subject", "details", "appreciation_id::text", "account", "manual_project_id", "project_description", "customer_name"])}${pmFor("appreciations")}
     `;
 
     const { rows } = await pool.query(

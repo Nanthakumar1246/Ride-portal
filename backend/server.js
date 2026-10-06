@@ -43,9 +43,9 @@ app.use(
                 scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
                 styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
                 fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
-                imgSrc: ["'self'", "data:", "https://RIDE.arche.global"],
-                connectSrc: ["'self'", "https://RIDE.arche.global"],
-                mediaSrc: ["'self'", "https://RIDE.arche.global"],
+                imgSrc: ["'self'", "data:", "blob:", "http://localhost:5000", "https://RIDE.arche.global", "https://ride.arche.global"],
+                connectSrc: ["'self'", "http://localhost:5000", "https://RIDE.arche.global", "https://ride.arche.global"],
+                mediaSrc: ["'self'", "http://localhost:5000", "https://RIDE.arche.global", "https://ride.arche.global"],
                 frameAncestors: ["'self'"],
                 objectSrc: ["'none'"],
                 baseUri: ["'self'"],
@@ -53,7 +53,7 @@ app.use(
             },
         },
         crossOriginEmbedderPolicy: false,
-        crossOriginResourcePolicy: { policy: "same-origin" },
+        crossOriginResourcePolicy: { policy: "cross-origin" },
         strictTransportSecurity: {
             maxAge: 31536000, // 1 year
             includeSubDomains: true,
@@ -83,7 +83,11 @@ app.use(cors({
 }));
 
 app.use(json());
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", (req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.setHeader("Access-Control-Allow-Origin", req.headers.origin || "*");
+  next();
+}, express.static("uploads"));
 
 
 
@@ -133,7 +137,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-app.listen(PORT, async () => {
+const server = app.listen(PORT, async () => {
     console.log(`Server listening on port ${PORT} `);
     try {
         await pool.query(`
@@ -167,10 +171,31 @@ app.listen(PORT, async () => {
                 created_at TIMESTAMP DEFAULT NOW()
             );
         `);
-        console.log("Auto-Migration: Ensure OTP columns, risk_history, and email_audit_log tables exist.");
+        await pool.query(`
+            ALTER TABLE appreciations
+            ADD COLUMN IF NOT EXISTS appreciation_scope VARCHAR(50) DEFAULT 'Internal Appreciation'
+        `);
+        await pool.query(`
+            ALTER TABLE actions
+            ADD COLUMN IF NOT EXISTS manual_project_id VARCHAR(255)
+        `);
+        await pool.query(`
+            ALTER TABLE email_audit_log
+            ADD COLUMN IF NOT EXISTS internet_message_id VARCHAR(500)
+        `);
+        console.log("Auto-Migration: Ensure OTP columns, risk_history, email_audit_log (+ internet_message_id), appreciation_scope, and actions.manual_project_id exist.");
         
         startReminderScheduler();
     } catch (err) {
         console.error("Auto-Migration failed:", err);
     }
+});
+
+server.on("error", (err) => {
+    if (err?.code === "EADDRINUSE") {
+        console.error(`Port ${PORT} is already in use. Stop the other backend process, then restart.`);
+        process.exit(1);
+    }
+    console.error("Server failed to start:", err);
+    process.exit(1);
 });

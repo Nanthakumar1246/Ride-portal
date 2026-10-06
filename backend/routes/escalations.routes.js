@@ -14,7 +14,7 @@ const router = Router();
 router.get("/", listEscalations);
 router.get("/:id", getEscalation);
 router.post("/", createEscalationHandler);
-router.put("/:id", updateEscalationHandler);
+router.put("/:id", upload.single("attachment"), updateEscalationHandler);
 router.post("/decisions/:notificationId", decideEscalationResolution);
 router.post("/:id/resolve", upload.array("documents", 3), resolveEscalation);
 router.post("/delete-multiple", deleteEscalationsHandler);

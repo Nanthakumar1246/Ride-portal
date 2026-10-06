@@ -1,4 +1,4 @@
--- Task 5: Headed By / Program Manager mapping columns
+-- Task 5: Headed By / Project Manager mapping columns
 -- Task 6: Behalf Of field
 ALTER TABLE risks ADD COLUMN IF NOT EXISTS project_manager VARCHAR(255);
 ALTER TABLE risks ADD COLUMN IF NOT EXISTS program_manager VARCHAR(255);

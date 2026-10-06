@@ -1,22 +1,31 @@
 import { useFilter } from '../context/FilterContext';
 import { useAuth } from '../context/AuthContext';
 import React, { useEffect, useState, useCallback } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import RecordDetailModal from "../components/RecordDetailModal";
+import { withAttachment } from "../utils/withAttachment";
 import { formatDateOnly } from "../utils/dateFormat";
 import { motion, AnimatePresence } from "framer-motion";
 import { fetchActions, createActionApi, updateActionApi } from "../api/actionsApi";
 import useMonitoringExport from "../hooks/useMonitoringExport";
+import useAutoRefresh from "../hooks/useAutoRefresh";
 import LayoutBuilder from "../components/LayoutBuilder";
 import { getLayoutApi, saveLayoutApi } from "../api/layoutApi";
 import { actionsFormConfig } from "../config/formConfig";
 import { FiSearch, FiFilter, FiRotateCcw, FiPlusCircle, FiList, FiClock, FiCheckCircle, FiAlertTriangle, FiPauseCircle, FiSave } from "react-icons/fi";
 import { DownloadSimple, ShieldWarning, Plus, ClockCounterClockwise } from "phosphor-react";
 import TruncatedCell from "../components/TruncatedCell";
+import SearchableSelect from "../components/SearchableSelect";
+import Pagination from "../components/Pagination";
 import { exportToExcel } from "../utils/exportToExcel";
 import { searchProjects, fetchProgramManagers } from "../api/projectsApi";
 import { fetchModuleHistoryApi } from "../api/moduleHistoryApi";
 import AddProjectModal from "../components/AddProjectModal";
 import ProjectHistoryModal from "../components/ProjectHistoryModal";
 import BulkUploadActionsModal from "../components/BulkUploadActionsModal";
+import { AGING_BUCKETS, AGING_CONFIGS, computeAgingCounts, matchesAgingFilter } from "../utils/agingUtils";
+
+const agingConfig = AGING_CONFIGS.actions;
 
 const ARCHE_EMAIL_REGEX = /^[^\s@]+@arche\.global$/i;
 
@@ -26,6 +35,9 @@ const ALLOWED_STATUSES = [
   "Closed & Acknowledged",
   "Hold"
 ];
+
+// Closing a log needs evidence: remarks plus a supporting attachment.
+const PROOF_STATUSES = ["Closed & Acknowledged", "Hold"];
 
 const getStatusMeta = (statusStr) => {
   if (!statusStr) return { class: "bg-gray-100 text-gray-700 border-gray-200", rowBg: "bg-red-50/30", label: "Open" };
@@ -43,7 +55,11 @@ const generateActionId = () => {
 };
 
 const MonitoringActionsPage = () => {
+  const [detailRecord, setDetailRecord] = useState(null);
   const { user } = useAuth();
+  const navigate = useNavigate();
+  // "Behalf Of" is only shown to an admin, and is optional for them.
+  const showBehalfOf = String(user?.role || "").toUpperCase() === "ADMIN";
   const { selectedManager } = useFilter();
 
   const [activeTab, setActiveTab] = useState("view"); // "view" | "create"
@@ -65,12 +81,23 @@ const MonitoringActionsPage = () => {
   const isAdmin = userData?.user?.role === "ADMIN";
 
   // Filter states
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 5;
   const [filters, setFilters] = useState({
     account: "",
     status: "",
     priority: "",
   });
   const [globalSearch, setGlobalSearch] = useState("");
+
+  // Opening a log from the dashboard aging drill-down lands here with
+  // ?search=<ID>; seeded from the dashboard so the record is already in view.
+  const { search: urlSearch } = useLocation();
+  useEffect(() => {
+    const q = new URLSearchParams(urlSearch).get("search");
+    if (q) setGlobalSearch(q);
+  }, [urlSearch]);
+  const [agingFilter, setAgingFilter] = useState("");
 
   // Projects data for auto-fill logic
   const [projectsList, setProjectsList] = useState([]);
@@ -111,6 +138,8 @@ const MonitoringActionsPage = () => {
   const [selectedUpdateId, setSelectedUpdateId] = useState("");
   const [updateStatus, setUpdateStatus] = useState("Open");
   const [updateRemarks, setUpdateRemarks] = useState("");
+  const [updateAttachment, setUpdateAttachment] = useState(null);
+  const proofRequired = PROOF_STATUSES.includes(updateStatus);
   const [actionHistory, setActionHistory] = useState([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
@@ -168,6 +197,10 @@ const MonitoringActionsPage = () => {
       );
     }
 
+    if (agingFilter) {
+      filtered = filtered.filter((row) => matchesAgingFilter(row, agingConfig, agingFilter));
+    }
+
     filtered.sort((a, b) => {
       const dateA = new Date(a.updated_at || a.target_date || a.created_at || 0);
       const dateB = new Date(b.updated_at || b.target_date || b.created_at || 0);
@@ -175,22 +208,22 @@ const MonitoringActionsPage = () => {
     });
 
     setRows(filtered);
-  }, [filters, globalSearch]);
+  }, [filters, globalSearch, agingFilter]);
 
-  const loadData = async () => {
+  const loadData = async (opts = {}) => {
     try {
-      setLoading(true);
+      if (!opts.silent) setLoading(true);
       const res = await fetchActions({ manager: selectedManager });
       const data = Array.isArray(res) ? res : (res?.data || []);
       setAllRows(data);
       applyFiltersAndSearch(data);
     } catch (err) {
       console.error("Failed to load actions", err);
-      triggerToast("Failed to load actions");
+      if (!opts.silent && err?.status !== 401) triggerToast("Failed to load actions");
       setAllRows([]);
       setRows([]);
     } finally {
-      setLoading(false);
+      if (!opts.silent) setLoading(false);
     }
   };
 
@@ -214,11 +247,18 @@ const MonitoringActionsPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedManager]);
 
+  useAutoRefresh(() => loadData({ silent: true }), 30000);
+
   useEffect(() => {
     if (allRows.length > 0) {
       applyFiltersAndSearch(allRows);
     }
-  }, [filters, globalSearch, allRows, applyFiltersAndSearch]);
+  }, [filters, globalSearch, agingFilter, allRows, applyFiltersAndSearch]);
+
+  const handleAgingFilterClick = (bucket) => {
+    setAgingFilter((prev) => (prev === bucket ? "" : bucket));
+    setCurrentPage(1);
+  };
 
   useMonitoringExport("actions", rows);
 
@@ -235,32 +275,11 @@ const MonitoringActionsPage = () => {
   const totalPriorityCount = allRows.length || 1;
 
   // Computed Aging Overview
-  const now = new Date();
-  let overdue = 0;
-  let dueTodayTomorrow = 0;
-  let dueThisWeek = 0;
-  let onTrack = 0;
-
-  allRows.forEach((item) => {
-    const st = String(item.status || "").toLowerCase();
-    if (st.includes("resolved") || st.includes("completed")) return;
-
-    const targetDateStr = item.target_date || item.due_date || item.created_at;
-    if (!targetDateStr) {
-      onTrack++;
-      return;
-    }
-    const target = new Date(targetDateStr);
-    const diffDays = Math.ceil((target - now) / (1000 * 60 * 60 * 24));
-
-    if (diffDays < 0) overdue++;
-    else if (diffDays <= 1) dueTodayTomorrow++;
-    else if (diffDays <= 7) dueThisWeek++;
-    else onTrack++;
-  });
+  const { overdue, dueTodayTomorrow, dueThisWeek, onTrack } = computeAgingCounts(allRows, agingConfig);
 
   const activeTotal = openCount + inProgressCount;
   const openPercentage = Math.round((activeTotal / (allRows.length || 1)) * 100);
+  const agingBarTotal = overdue + dueTodayTomorrow + dueThisWeek + onTrack || activeTotal;
 
   // Auto-fill logic when selecting Customer & Project
   const accountOptions = Array.from(new Set(projectsList.map((p) => p.account).filter(Boolean)));
@@ -337,14 +356,27 @@ const MonitoringActionsPage = () => {
       const target = allRows.find((r) => r.action_id === selectedUpdateId || r.id === selectedUpdateId);
       if (!target) return;
 
-      await updateActionApi(target.id, {
+      // Closing or holding a log has to be evidenced.
+      if (proofRequired) {
+        if (!updateRemarks.trim()) {
+          triggerToast(`Remarks are required to set status to ${updateStatus}`);
+          return;
+        }
+        if (!updateAttachment) {
+          triggerToast(`An attachment is required to set status to ${updateStatus}`);
+          return;
+        }
+      }
+
+      await updateActionApi(target.id, withAttachment({
         status: updateStatus,
         remarks: updateRemarks,
         updated_by: user?.name || user?.email || "Admin User",
-      });
+      }, updateAttachment));
 
       triggerToast("✅ Action status updated!");
       setUpdateRemarks("");
+      setUpdateAttachment(null);
       loadData();
       await loadMasterHistory();
     } catch (err) {
@@ -462,6 +494,14 @@ const MonitoringActionsPage = () => {
             >
               <FiPlusCircle size={14} /> Create Action
             </button>
+
+            <button
+              type="button"
+              onClick={() => navigate("/monitoring/actions/update")}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-extrabold text-slate-600 hover:text-slate-900 transition-all"
+            >
+              <FiRotateCcw size={14} /> Update Status
+            </button>
           </div>
         </div>
       </div>
@@ -477,7 +517,7 @@ const MonitoringActionsPage = () => {
               className="bg-white rounded-2xl border border-rose-100 p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:border-rose-300 transition-all"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black text-rose-600 uppercase tracking-wider">PENDING ACTIONS</span>
+                <span className="text-[11px] font-black text-rose-600 uppercase tracking-wider">OPEN</span>
                 <span className="p-2 rounded-xl bg-rose-50 text-rose-600 border border-rose-100">
                   <FiAlertTriangle size={18} />
                 </span>
@@ -519,7 +559,7 @@ const MonitoringActionsPage = () => {
               className="bg-white rounded-2xl border border-emerald-100 p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:border-emerald-300 transition-all"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">COMPLETED</span>
+                <span className="text-[11px] font-black text-emerald-600 uppercase tracking-wider">closed and ack</span>
                 <span className="p-2 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-100">
                   <FiCheckCircle size={18} />
                 </span>
@@ -540,7 +580,7 @@ const MonitoringActionsPage = () => {
               className="bg-white rounded-2xl border border-purple-100 p-5 shadow-[0_2px_10px_rgba(0,0,0,0.02)] relative overflow-hidden group hover:border-purple-300 transition-all"
             >
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-black text-purple-600 uppercase tracking-wider">ON HOLD</span>
+                <span className="text-[11px] font-black text-purple-600 uppercase tracking-wider">HOLD</span>
                 <span className="p-2 rounded-xl bg-purple-50 text-purple-600 border border-purple-100">
                   <FiPauseCircle size={18} />
                 </span>
@@ -639,44 +679,48 @@ const MonitoringActionsPage = () => {
               {/* Stacked Progress Bar with Framer Motion Width Animations & Inner Numbers */}
               <div className="my-3">
                 <div className="w-full h-5 rounded-full bg-slate-100 overflow-hidden flex shadow-inner p-0.5">
-                  {activeTotal > 0 ? (
+                  {agingBarTotal > 0 ? (
                     <>
                       {overdue > 0 && (
                         <motion.div
-                          initial={{ width: 0 }} animate={{ width: `${(overdue / activeTotal) * 100}%` }}
+                          initial={{ width: 0 }} animate={{ width: `${(overdue / agingBarTotal) * 100}%` }}
                           transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
-                          className="bg-rose-500 h-full rounded-l-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                          className={`bg-rose-500 h-full rounded-l-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.OVERDUE ? "ring-2 ring-rose-300 ring-offset-1" : ""}`}
                           title={`Overdue: ${overdue}`}
+                          onClick={() => handleAgingFilterClick(AGING_BUCKETS.OVERDUE)}
                         >
                           {overdue}
                         </motion.div>
                       )}
                       {dueTodayTomorrow > 0 && (
                         <motion.div
-                          initial={{ width: 0 }} animate={{ width: `${(dueTodayTomorrow / activeTotal) * 100}%` }}
+                          initial={{ width: 0 }} animate={{ width: `${(dueTodayTomorrow / agingBarTotal) * 100}%` }}
                           transition={{ duration: 0.8, ease: "easeOut", delay: 0.35 }}
-                          className="bg-amber-500 h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                          className={`bg-amber-500 h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.DUE_TODAY_TOMORROW ? "ring-2 ring-amber-300 ring-offset-1" : ""}`}
                           title={`Due Today/Tomorrow: ${dueTodayTomorrow}`}
+                          onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_TODAY_TOMORROW)}
                         >
                           {dueTodayTomorrow}
                         </motion.div>
                       )}
                       {dueThisWeek > 0 && (
                         <motion.div
-                          initial={{ width: 0 }} animate={{ width: `${(dueThisWeek / activeTotal) * 100}%` }}
+                          initial={{ width: 0 }} animate={{ width: `${(dueThisWeek / agingBarTotal) * 100}%` }}
                           transition={{ duration: 0.8, ease: "easeOut", delay: 0.5 }}
-                          className="bg-sky-500 h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                          className={`bg-sky-500 h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.DUE_THIS_WEEK ? "ring-2 ring-sky-300 ring-offset-1" : ""}`}
                           title={`Due This Week: ${dueThisWeek}`}
+                          onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_THIS_WEEK)}
                         >
                           {dueThisWeek}
                         </motion.div>
                       )}
                       {onTrack > 0 && (
                         <motion.div
-                          initial={{ width: 0 }} animate={{ width: `${(onTrack / activeTotal) * 100}%` }}
+                          initial={{ width: 0 }} animate={{ width: `${(onTrack / agingBarTotal) * 100}%` }}
                           transition={{ duration: 0.8, ease: "easeOut", delay: 0.65 }}
-                          className="bg-emerald-500 h-full rounded-r-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                          className={`bg-emerald-500 h-full rounded-r-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.ON_TRACK ? "ring-2 ring-emerald-300 ring-offset-1" : ""}`}
                           title={`On Track: ${onTrack}`}
+                          onClick={() => handleAgingFilterClick(AGING_BUCKETS.ON_TRACK)}
                         >
                           {onTrack}
                         </motion.div>
@@ -692,19 +736,38 @@ const MonitoringActionsPage = () => {
 
               {/* Word-based Legend with counts in parentheses */}
               <div className="flex flex-wrap items-center gap-x-3.5 gap-y-2 text-xs font-bold text-slate-700 pt-2 border-t border-slate-100">
-                <div className="flex items-center gap-1.5">
+                <div
+                  className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${!agingFilter ? "bg-slate-100 ring-1 ring-slate-300" : "hover:bg-slate-50"}`}
+                  onClick={() => setAgingFilter("")}
+                >
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-500 shrink-0" />
+                  <span className="text-slate-800">All ({overdue + dueTodayTomorrow + dueThisWeek + onTrack})</span>
+                </div>
+                <div
+                  className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.OVERDUE ? "bg-rose-50 ring-1 ring-rose-200" : "hover:bg-slate-50"}`}
+                  onClick={() => handleAgingFilterClick(AGING_BUCKETS.OVERDUE)}
+                >
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0" />
                   <span className="text-slate-800">Overdue ({overdue})</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div
+                  className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.DUE_TODAY_TOMORROW ? "bg-amber-50 ring-1 ring-amber-200" : "hover:bg-slate-50"}`}
+                  onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_TODAY_TOMORROW)}
+                >
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
                   <span className="text-slate-800">Due Today/Tomorrow ({dueTodayTomorrow})</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div
+                  className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.DUE_THIS_WEEK ? "bg-sky-50 ring-1 ring-sky-200" : "hover:bg-slate-50"}`}
+                  onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_THIS_WEEK)}
+                >
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shrink-0" />
                   <span className="text-slate-800">Due This Week ({dueThisWeek})</span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div
+                  className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.ON_TRACK ? "bg-emerald-50 ring-1 ring-emerald-200" : "hover:bg-slate-50"}`}
+                  onClick={() => handleAgingFilterClick(AGING_BUCKETS.ON_TRACK)}
+                >
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
                   <span className="text-slate-800">On Track ({onTrack})</span>
                 </div>
@@ -778,6 +841,7 @@ const MonitoringActionsPage = () => {
                 onClick={() => {
                   setFilters({ account: "", status: "", priority: "" });
                   setGlobalSearch("");
+                  setAgingFilter("");
                 }}
                 className="rounded-xl bg-slate-100 text-slate-600 p-2.5 border border-slate-200 hover:bg-slate-200 transition shadow-2xs shrink-0"
                 title="Reset Filters"
@@ -788,64 +852,83 @@ const MonitoringActionsPage = () => {
           </div>
 
           {/* SECTION 5: Master Actions Table */}
-          <div className="rounded-2xl bg-white border border-slate-200/80 shadow-xs overflow-x-auto min-h-[300px]">
+          <div className="rounded-2xl bg-white border border-slate-200/80 shadow-xs min-h-[300px]">
             {loading ? (
               <div className="p-12 text-center text-sm font-bold text-slate-500 flex items-center justify-center gap-3">
                 <div className="w-5 h-5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
                 Loading Master Actions Table...
               </div>
             ) : (
-              <table className="w-full text-left text-xs border-collapse min-w-[1500px]">
-                <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 font-black uppercase text-[10px] tracking-wider sticky top-0 backdrop-blur z-10">
+              <table className="w-full text-left text-xs border-collapse table-fixed">
+                <thead className="bg-slate-50/90 border-b border-slate-200 text-slate-500 font-black uppercase text-[10px] tracking-wider">
                   <tr>
-                    <th className="p-3.5 w-12 text-center">No</th>
-                    <th className="p-3.5 min-w-[120px]">Account</th>
-                    <th className="p-3.5 min-w-[110px]">Action ID</th>
-                    <th className="p-3.5 min-w-[110px]">Project ID</th>
-                    <th className="p-3.5 min-w-[140px]">Status</th>
-                    <th className="p-3.5 min-w-[110px]">Priority</th>
-                    <th className="p-3.5 min-w-[220px]">Action Item</th>
-                    <th className="p-3.5 min-w-[130px]">Target Date</th>
-                    <th className="p-3.5 min-w-[140px]">Responsible</th>
-                    <th className="p-3.5 min-w-[160px]">Support Required From</th>
-                    <th className="p-3.5 min-w-[150px]">Teams Involved</th>
-                    <th className="p-3.5 min-w-[200px]">Remarks</th>
+                    <th className="p-3 w-[64px] text-center">S.No</th>
+                    <th className="p-3 w-[140px]">Action ID</th>
+                    <th className="p-3">Action Title</th>
+                    <th className="p-3 w-[180px]">Customer / Account</th>
+                    <th className="p-3 w-[110px]">Priority</th>
+                    <th className="p-3 w-[130px]">Due Date</th>
+                    <th className="p-3 w-[110px] text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {rows.map((row, idx) => {
+                  {rows.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((row, idx) => {
                     const stMeta = getStatusMeta(row.status || row.current_status);
+                    const recordId = row.action_id || row.id;
+                    const dueDate = row.target_date || row.due_date;
+                    const priority = row.priority || "Medium";
                     return (
-                      <tr key={row.id || idx} className={`${stMeta.rowBg || "bg-white"} hover:bg-slate-50/80 transition-colors text-slate-800 border-b border-slate-100`}>
-                        <td className="p-3.5 text-center font-bold text-slate-400">{idx + 1}</td>
-                        <td className="p-3.5 font-bold text-slate-900">{row.account || "—"}</td>
-                        <td className="p-3.5 font-black text-emerald-600">{row.action_id || row.id}</td>
-                        <td className="p-3.5 font-semibold text-slate-700">{row.manual_project_id || "—"}</td>
-                        <td className="p-3.5">
-                          <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${stMeta.class}`}>
-                            {stMeta.label}
-                          </span>
+                      <tr
+                        key={row.id || idx}
+                        className={`${stMeta.rowBg || "bg-white"} hover:bg-slate-50/80 transition-colors text-slate-800`}
+                      >
+                        <td className="p-3 text-center font-bold text-slate-400">
+                          {(currentPage - 1) * pageSize + idx + 1}
                         </td>
-                        <td className="p-3.5">
+                        <td className="p-3 font-black text-indigo-700 truncate" title={recordId}>
+                          <button
+                            type="button"
+                            onClick={() => setDetailRecord({ module: "action", id: recordId })}
+                            className="hover:underline focus:outline-none focus:underline"
+                            title="View full details"
+                          >
+                            {recordId || "—"}
+                          </button>
+                        </td>
+                        <td className="p-3 font-bold text-slate-900 truncate" title={row.action_item || row.action_title || row.title || ""}>
+                          {row.action_item || row.action_title || row.title || "—"}
+                        </td>
+                        <td className="p-3 font-semibold text-slate-700 truncate" title={row.account || row.customer_name || ""}>
+                          {row.account || row.customer_name || "—"}
+                        </td>
+                        <td className="p-3">
                           <span className={`px-2.5 py-1 rounded-md text-[10px] font-black border ${
-                            String(row.priority).toLowerCase().includes("high") ? "bg-rose-50 text-rose-700 border-rose-200" :
-                            String(row.priority).toLowerCase().includes("medium") ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                            String(priority).toLowerCase().includes("critical") || String(priority).toLowerCase().includes("high")
+                              ? "bg-rose-50 text-rose-700 border-rose-200"
+                              : String(priority).toLowerCase().includes("medium")
+                              ? "bg-amber-50 text-amber-700 border-amber-200"
+                              : "bg-emerald-50 text-emerald-700 border-emerald-200"
                           }`}>
-                            {row.priority || "High"}
+                            {priority}
                           </span>
                         </td>
-                        <td className="p-3.5 font-bold text-slate-900 max-w-xs truncate">{row.action_item || row.title || "—"}</td>
-                        <td className="p-3.5 font-bold text-rose-700">{formatDateOnly(row.target_date || row.due_date)}</td>
-                        <td className="p-3.5 font-semibold text-slate-800">{row.responsible || "—"}</td>
-                        <td className="p-3.5 font-medium text-slate-600">{row.support_required_from || "—"}</td>
-                        <td className="p-3.5 font-medium text-slate-600">{row.teams_involved || "—"}</td>
-                        <td className="p-3.5 max-w-sm"><TruncatedCell content={String(row.remarks || "")} /></td>
+                        <td className="p-3 font-bold text-slate-700">{dueDate ? formatDateOnly(dueDate) : "—"}</td>
+                        <td className="p-3 text-center">
+                          <button
+                            type="button"
+                            onClick={() => navigate(`/monitoring/actions/update?id=${encodeURIComponent(recordId)}`)}
+                            title="Open this record to view details and update its status"
+                            className="px-3 py-1.5 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-[11px] font-black uppercase tracking-wide hover:bg-indigo-100 transition"
+                          >
+                            View
+                          </button>
+                        </td>
                       </tr>
                     );
                   })}
                   {rows.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="p-10 text-center text-sm font-semibold text-slate-400">
+                      <td colSpan={7} className="p-10 text-center text-sm font-semibold text-slate-400">
                         No actions found matching criteria.
                       </td>
                     </tr>
@@ -854,6 +937,17 @@ const MonitoringActionsPage = () => {
               </table>
             )}
           </div>
+          
+          {/* Pagination Controls */}
+          {activeTab === "view" && rows.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(rows.length / pageSize) || 1}
+              onPageChange={setCurrentPage}
+              totalItems={rows.length}
+              pageSize={pageSize}
+            />
+          )}
         </div>
       )}
 
@@ -933,32 +1027,34 @@ const MonitoringActionsPage = () => {
                 />
               </div>
 
-              {/* Program Manager (filtered by Headed By) */}
+              {/* Project Manager (filtered by Headed By) */}
               <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Program Manager</label>
+                <label className="block text-xs font-bold text-gray-700 mb-1">Project Manager</label>
                 <select
                   value={createForm.project_manager}
                   onChange={(e) => setCreateForm((p) => ({ ...p, project_manager: e.target.value }))}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
                 >
-                  <option value="">{createForm.program_manager ? "Select Program Manager..." : "Select Project first"}</option>
+                  <option value="">{createForm.program_manager ? "Select Project Manager..." : "Select Project first"}</option>
                   {programManagerOptions.map((opt) => (
                     <option key={opt} value={opt}>{opt}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Behalf Of */}
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-1">Behalf Of (@arche.global Email ID)</label>
-                <input
-                  type="email"
-                  value={createForm.behalf_of}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, behalf_of: e.target.value }))}
-                  placeholder="Optional — name@arche.global"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
+              {/* Behalf Of — admin only */}
+              {showBehalfOf && (
+                <div>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Behalf Of (@arche.global Email ID)</label>
+                  <input
+                    type="email"
+                    value={createForm.behalf_of}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, behalf_of: e.target.value }))}
+                    placeholder="Optional — name@arche.global"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              )}
 
               {/* Priority */}
               <div>
@@ -1082,18 +1178,17 @@ const MonitoringActionsPage = () => {
               <form onSubmit={handleUpdateStatusSubmit} className="flex flex-col gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">Action ID</label>
-                  <select
+                  <SearchableSelect
                     value={selectedUpdateId}
-                    onChange={(e) => handleSelectActionForUpdate(e.target.value)}
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs outline-none focus:ring-2 focus:ring-indigo-500"
-                  >
-                    <option value="">[ Select Action ID ]</option>
-                    {allRows.map((r) => (
-                      <option key={r.id || r.action_id} value={r.action_id || r.id}>
-                        {r.action_id || r.id} — {r.account || "Account"} ({r.status || "Open"})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={handleSelectActionForUpdate}
+                    emptyLabel="[ Select Action ID ]"
+                    placeholder="Type to search Action ID…"
+                    options={allRows.map((r) => ({
+                      value: r.action_id || r.id,
+                      label: `${r.action_id || r.id} — ${r.account || "Account"} (${r.status || "Open"})`,
+                      sublabel: r.account,
+                    }))}
+                  />
                 </div>
 
                 <div>
@@ -1123,15 +1218,34 @@ const MonitoringActionsPage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">Remarks</label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">
+                    Remarks{proofRequired && <span className="text-red-600"> *</span>}
+                  </label>
                   <textarea
                     rows={3}
                     placeholder="What changed? Add a short update..."
                     value={updateRemarks}
                     onChange={(e) => setUpdateRemarks(e.target.value)}
+                    required={proofRequired}
                     className="w-full rounded-lg border border-gray-300 p-3 text-xs outline-none focus:border-indigo-500"
                   />
                 </div>
+
+                {proofRequired && (
+                  <div>
+                    <label className="block text-xs font-bold text-gray-700 mb-1">
+                      Attachment <span className="text-red-600">*</span>
+                    </label>
+                    <input
+                      type="file"
+                      onChange={(e) => setUpdateAttachment(e.target.files?.[0] || null)}
+                      className="w-full rounded-lg border border-gray-300 p-2 text-xs outline-none focus:border-indigo-500"
+                    />
+                    <p className="mt-1 text-[11px] font-semibold text-gray-500">
+                      Required when closing or holding a log.
+                    </p>
+                  </div>
+                )}
 
                 <button
                   type="submit"
@@ -1221,6 +1335,13 @@ const MonitoringActionsPage = () => {
             setLayoutFields(newLayout);
             setShowLayoutBuilder(false);
           }}
+        />
+      )}
+      {detailRecord && (
+        <RecordDetailModal
+          module={detailRecord.module}
+          id={detailRecord.id}
+          onClose={() => setDetailRecord(null)}
         />
       )}
     </motion.div>

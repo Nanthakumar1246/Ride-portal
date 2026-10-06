@@ -217,13 +217,7 @@ const ProjectMasterSelector = ({
               <strong className="text-slate-800">{selectedProjectDetails.so_number || "—"}</strong>
             </div>
 
-            <div className="bg-white/80 p-2 rounded-lg border border-indigo-100/60">
-              <span className="text-slate-400 block text-[10px]">Project Description</span>
-              <strong className="text-slate-800 truncate block" title={selectedProjectDetails.project_description}>
-                {selectedProjectDetails.project_description || "—"}
-              </strong>
-            </div>
-
+            
             <div className="bg-white/80 p-2 rounded-lg border border-indigo-100/60">
               <span className="text-slate-400 block text-[10px] mb-1">Project Manager (PM)</span>
               <select 
@@ -239,7 +233,7 @@ const ProjectMasterSelector = ({
             </div>
 
             <div className="bg-white/80 p-2 rounded-lg border border-indigo-100/60">
-              <span className="text-slate-400 block text-[10px] mb-1">Program Manager (Headed By)</span>
+              <span className="text-slate-400 block text-[10px] mb-1">Project Manager (Headed By)</span>
               <select 
                 value={selectedProjectDetails.program_manager || ""}
                 onChange={(e) => handleManagerChange("program_manager", e.target.value)}

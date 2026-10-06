@@ -11,6 +11,10 @@ import {
   FileXls,
   FloppyDisk,
   Rows,
+  PencilSimple,
+  Trash,
+  X,
+  Plus,
 } from "phosphor-react";
 import {
   fetchProjectsMaster,
@@ -19,6 +23,9 @@ import {
   upsertProjectsBulk,
   fetchMappingTemplates,
   saveMappingTemplate,
+  updateProject,
+  deleteProject,
+  createProject,
 } from "../api/projectsApi";
 import {
   TARGET_FIELDS,
@@ -28,6 +35,7 @@ import {
   downloadErrorReport,
 } from "../utils/projectExcelParser";
 import SuccessNotification from "../components/SuccessNotification";
+import Pagination from "../components/Pagination";
 
 const ProjectMasterPage = () => {
   const [activeTab, setActiveTab] = useState("view"); // 'view' | 'import'
@@ -39,6 +47,9 @@ const ProjectMasterPage = () => {
   const [selectedAccountFilter, setSelectedAccountFilter] = useState("");
   const [selectedPmFilter, setSelectedPmFilter] = useState("");
   const [selectedPgmFilter, setSelectedPgmFilter] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   const [accountList, setAccountList] = useState([]);
   const [pmList, setPmList] = useState([]);
@@ -60,6 +71,26 @@ const ProjectMasterPage = () => {
   const [importing, setImporting] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [editingProject, setEditingProject] = useState(null);
+  const [editForm, setEditForm] = useState({
+    project_manager: "",
+    program_manager: "",
+  });
+  const [editSaving, setEditSaving] = useState(false);
+
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState({
+    so_number: "",
+    manual_project_id: "",
+    account: "",
+    project_manager: "",
+    program_manager: "",
+    project_description: "",
+    scope_description: "",
+    status: "Active",
+  });
+  const [createSaving, setCreateSaving] = useState(false);
 
   const fileInputRef = useRef(null);
 
@@ -101,6 +132,10 @@ const ProjectMasterPage = () => {
   useEffect(() => {
     loadMasterData();
   }, [loadMasterData]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedAccountFilter, selectedPmFilter, selectedPgmFilter]);
 
   // Handle Excel File Selection
   const handleFileSelect = async (file) => {
@@ -211,10 +246,9 @@ const ProjectMasterPage = () => {
     const exportData = projects.map((p) => ({
       "SO Number": p.so_number || "",
       "Project ID": p.manual_project_id || p.name || "",
-      "Project Description": p.project_description || "",
       Account: p.account || "",
       "Project Manager (PM)": p.project_manager || "",
-      "Program Manager (Headed By)": p.program_manager || "",
+      "Project Manager (Headed By)": p.program_manager || "",
       "Scope Description": p.scope_description || "",
       Status: p.status || "Active",
     }));
@@ -225,17 +259,107 @@ const ProjectMasterPage = () => {
     XLSX.writeFile(wb, `RIDE_Project_Master_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
+  const openEditModal = (project) => {
+    setEditingProject(project);
+    setEditForm({
+      project_manager: project.project_manager || "",
+      program_manager: project.program_manager || "",
+    });
+    setErrorMessage("");
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingProject?.id) return;
+
+    setEditSaving(true);
+    setErrorMessage("");
+    try {
+      await updateProject(editingProject.id, {
+        project_manager: editForm.project_manager.trim(),
+        program_manager: editForm.program_manager.trim(),
+      });
+      setSuccessMessage("Project updated successfully!");
+      setEditingProject(null);
+      await loadMasterData();
+    } catch (err) {
+      console.error("Update project error:", err);
+      setErrorMessage(err.response?.data?.message || "Failed to update project.");
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const openCreateModal = () => {
+    setCreateForm({
+      so_number: "",
+      manual_project_id: "",
+      account: "",
+      project_manager: "",
+      program_manager: "",
+      project_description: "",
+      scope_description: "",
+      status: "Active",
+    });
+    setShowCreateModal(true);
+    setErrorMessage("");
+  };
+
+  const handleCreateProject = async (e) => {
+    e.preventDefault();
+    if (!createForm.manual_project_id.trim() || !createForm.account.trim()) {
+      setErrorMessage("Project ID and Account are required.");
+      return;
+    }
+
+    setCreateSaving(true);
+    setErrorMessage("");
+    try {
+      await createProject({
+        ...createForm,
+        manual_project_id: createForm.manual_project_id.trim(),
+        account: createForm.account.trim(),
+        project_manager: createForm.project_manager.trim(),
+        program_manager: createForm.program_manager.trim(),
+      });
+      setSuccessMessage("Project created successfully!");
+      setShowCreateModal(false);
+      await loadMasterData();
+    } catch (err) {
+      console.error("Create project error:", err);
+      setErrorMessage(err.response?.data?.message || "Failed to create project.");
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  const handleDeleteProject = async (project) => {
+    if (!project?.id) return;
+    const label = project.manual_project_id || project.name || "this project";
+    if (!window.confirm(`Delete project "${label}"? This cannot be undone.`)) return;
+
+    try {
+      await deleteProject(project.id);
+      setSuccessMessage("Project deleted successfully!");
+      if (editingProject?.id === project.id) setEditingProject(null);
+      await loadMasterData();
+    } catch (err) {
+      console.error("Delete project error:", err);
+      setErrorMessage(err.response?.data?.message || "Failed to delete project.");
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50/50 p-4 sm:p-6 lg:p-8 space-y-6">
       {/* Toast Notification */}
       {successMessage && (
-        <SuccessNotification message={successMessage} onClose={() => setSuccessMessage("")} />
+        <SuccessNotification isOpen={!!successMessage} onClose={() => setSuccessMessage("")} />
       )}
 
       {/* Header Banner */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-white p-6 rounded-3xl text-slate-900 shadow-sm border border-slate-200/80">
         <div className="flex items-center gap-4">
-          <div className="h-14 w-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shadow-inner">
+          <div className="h-12 w-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shadow-inner">
             <Folder size={32} weight="duotone" className="text-indigo-600" />
           </div>
           <div>
@@ -336,14 +460,14 @@ const ProjectMasterPage = () => {
                 </select>
               </div>
 
-              {/* Program Manager Filter */}
+              {/* Project Manager Filter */}
               <div className="relative">
                 <select
                   value={selectedPgmFilter}
                   onChange={(e) => setSelectedPgmFilter(e.target.value)}
                   className="w-full px-3.5 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-slate-700"
                 >
-                  <option value="">All Program Managers (Headed By)</option>
+                  <option value="">All Project Managers (Headed By)</option>
                   {pgmList.map((pgm) => (
                     <option key={pgm} value={pgm}>
                       {pgm}
@@ -360,6 +484,12 @@ const ProjectMasterPage = () => {
               </span>
 
               <div className="flex items-center gap-3">
+                <button
+                  onClick={openCreateModal}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-semibold transition-all shadow-sm"
+                >
+                  <Plus size={14} weight="bold" /> New Project
+                </button>
                 <button
                   onClick={loadMasterData}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-semibold transition-all"
@@ -384,12 +514,12 @@ const ProjectMasterPage = () => {
                   <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider">
                     <th className="px-4 py-3">SO Number</th>
                     <th className="px-4 py-3">Project ID</th>
-                    <th className="px-4 py-3">Project Description</th>
                     <th className="px-4 py-3">Account / Client</th>
                     <th className="px-4 py-3">PM</th>
-                    <th className="px-4 py-3">Program Manager</th>
+                    <th className="px-4 py-3">Project Manager</th>
                     <th className="px-4 py-3">Scope / Description</th>
                     <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -407,25 +537,42 @@ const ProjectMasterPage = () => {
                       </td>
                     </tr>
                   ) : (
-                    projects.map((p, idx) => (
+                    projects.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((p, idx) => (
                       <tr key={p.id || idx} className="hover:bg-indigo-50/30 transition-colors">
                         <td className="px-4 py-2.5 font-semibold text-slate-700">{p.so_number || "—"}</td>
                         <td className="px-4 py-2.5 font-bold text-indigo-600">{p.manual_project_id || p.name}</td>
-                        <td className="px-4 py-2.5 text-slate-800 max-w-[200px] truncate" title={p.project_description}>
-                          {p.project_description || "—"}
-                        </td>
-                        <td className="px-4 py-2.5 font-medium text-slate-700 max-w-[180px] truncate" title={p.account}>
+                        <td className="px-4 py-2.5 font-medium text-slate-800 max-w-[180px] truncate" title={p.account}>
                           {p.account || "—"}
                         </td>
                         <td className="px-4 py-2.5 text-slate-700">{p.project_manager || "—"}</td>
                         <td className="px-4 py-2.5 text-purple-700 font-medium">{p.program_manager || "—"}</td>
-                        <td className="px-4 py-2.5 text-slate-600 max-w-[200px] truncate" title={p.scope_description}>
-                          {p.scope_description || "—"}
+                        <td className="px-4 py-2.5 text-slate-600 max-w-[220px] truncate" title={p.scope_description || p.project_description}>
+                          {p.scope_description || p.project_description || "—"}
                         </td>
                         <td className="px-4 py-2.5">
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-                            <CheckCircle size={10} weight="fill" /> Active
+                            <CheckCircle size={10} weight="fill" /> {p.status || "Active"}
                           </span>
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(p)}
+                              className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-600 hover:bg-indigo-100 transition"
+                              title="Edit project"
+                            >
+                              <PencilSimple size={14} weight="bold" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteProject(p)}
+                              className="h-8 w-8 inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 hover:bg-red-100 transition"
+                              title="Delete project"
+                            >
+                              <Trash size={14} weight="bold" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
@@ -434,6 +581,16 @@ const ProjectMasterPage = () => {
               </table>
             </div>
           </div>
+
+          {projects.length > 0 && (
+            <Pagination
+              currentPage={currentPage}
+              totalPages={Math.ceil(projects.length / pageSize) || 1}
+              onPageChange={setCurrentPage}
+              totalItems={projects.length}
+              pageSize={pageSize}
+            />
+          )}
         </div>
       )}
 
@@ -693,10 +850,9 @@ const ProjectMasterPage = () => {
                       <th className="p-2.5">Status</th>
                       <th className="p-2.5">SO Number</th>
                       <th className="p-2.5">Project ID</th>
-                      <th className="p-2.5">Project Description</th>
                       <th className="p-2.5">Account</th>
                       <th className="p-2.5">PM</th>
-                      <th className="p-2.5">Program Manager</th>
+                      <th className="p-2.5">Project Manager</th>
                       <th className="p-2.5">Scope/Description</th>
                       <th className="p-2.5 min-w-[200px]">Validation Notes</th>
                     </tr>
@@ -759,6 +915,237 @@ const ProjectMasterPage = () => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Edit Project Modal — PM & Headed By only */}
+      {editingProject && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => !editSaving && setEditingProject(null)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 font-marcellus">Edit Project Managers</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {editingProject.manual_project_id || editingProject.name}
+                  {editingProject.account ? ` · ${editingProject.account}` : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !editSaving && setEditingProject(null)}
+                className="h-8 w-8 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center"
+              >
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEdit} className="space-y-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">PM</label>
+                <input
+                  type="text"
+                  list="pm-options-edit"
+                  value={editForm.project_manager}
+                  onChange={(e) => setEditForm((p) => ({ ...p, project_manager: e.target.value }))}
+                  placeholder="Project Manager name"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+                <datalist id="pm-options-edit">
+                  {pmList.map((pm) => (
+                    <option key={pm} value={pm} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Project Manager (Headed By)
+                </label>
+                <input
+                  type="text"
+                  list="pgm-options-edit"
+                  value={editForm.program_manager}
+                  onChange={(e) => setEditForm((p) => ({ ...p, program_manager: e.target.value }))}
+                  placeholder="Headed By name"
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+                <datalist id="pgm-options-edit">
+                  {pgmList.map((pgm) => (
+                    <option key={pgm} value={pgm} />
+                  ))}
+                </datalist>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingProject(null)}
+                  disabled={editSaving}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSaving}
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {editSaving ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create Project Modal */}
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 z-[300] flex items-center justify-center bg-black/50 backdrop-blur-sm px-4"
+          onClick={() => !createSaving && setShowCreateModal(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full p-6 max-h-[90vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-5 border-b border-slate-100 pb-3">
+              <div>
+                <h2 className="text-lg font-bold text-slate-900 font-marcellus">New Project</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Enter project master details</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => !createSaving && setShowCreateModal(false)}
+                className="h-8 w-8 rounded-full border border-slate-200 text-slate-500 hover:bg-slate-50 flex items-center justify-center"
+              >
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateProject} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">SO Number</label>
+                <input
+                  type="text"
+                  value={createForm.so_number}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, so_number: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Project ID *</label>
+                <input
+                  type="text"
+                  required
+                  value={createForm.manual_project_id}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, manual_project_id: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Account / Client *</label>
+                <input
+                  type="text"
+                  required
+                  list="account-options-create"
+                  value={createForm.account}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, account: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+                <datalist id="account-options-create">
+                  {accountList.map((acc) => (
+                    <option key={acc} value={acc} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Status</label>
+                <select
+                  value={createForm.status}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, status: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                >
+                  <option value="Active">Active</option>
+                  <option value="Inactive">Inactive</option>
+                  <option value="On Hold">On Hold</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">PM</label>
+                <input
+                  type="text"
+                  list="pm-options-create"
+                  value={createForm.project_manager}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, project_manager: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+                <datalist id="pm-options-create">
+                  {pmList.map((pm) => (
+                    <option key={pm} value={pm} />
+                  ))}
+                </datalist>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                  Project Manager (Headed By)
+                </label>
+                <input
+                  type="text"
+                  list="pgm-options-create"
+                  value={createForm.program_manager}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, program_manager: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+                <datalist id="pgm-options-create">
+                  {pgmList.map((pgm) => (
+                    <option key={pgm} value={pgm} />
+                  ))}
+                </datalist>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Project Description</label>
+                <input
+                  type="text"
+                  value={createForm.project_description}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, project_description: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Scope / Description</label>
+                <textarea
+                  rows={3}
+                  value={createForm.scope_description}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, scope_description: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2 flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateModal(false)}
+                  disabled={createSaving}
+                  className="flex-1 px-4 py-2.5 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={createSaving}
+                  className="flex-1 px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {createSaving ? "Creating..." : "Create Project"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

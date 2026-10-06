@@ -18,6 +18,9 @@ const MAP_COLUMNS_SELECT = `
   dependencies AS support_required_from,
   related_to_type AS teams_involved,
   comments AS remarks,
+  manual_project_id,
+  account,
+  project_description,
   project_manager,
   program_manager,
   behalf_of,
@@ -98,8 +101,11 @@ export async function createAction(data) {
       last_updated,
       project_manager,
       program_manager,
-      behalf_of
-    ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, NOW(), $11, $12, $13)
+      behalf_of,
+      manual_project_id,
+      account,
+      project_description
+    ) VALUES ($1, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_DATE, NOW(), $11, $12, $13, $14, $15, $16)
     RETURNING ${MAP_COLUMNS_SELECT};
   `;
 
@@ -117,6 +123,9 @@ export async function createAction(data) {
     data.project_manager || null,
     data.program_manager || null,
     data.behalf_of || null,
+    data.manual_project_id || null,
+    data.account || null,
+    data.project_description || null,
   ];
 
   const { rows } = await pool.query(insertSql, params);
@@ -137,6 +146,9 @@ export async function updateAction(id, data) {
       project_manager = $10,
       program_manager = $11,
       behalf_of = $12,
+      manual_project_id = $13,
+      account = $14,
+      project_description = $15,
       updated_at = NOW()
     WHERE id = $9
     RETURNING ${MAP_COLUMNS_SELECT};
@@ -155,6 +167,9 @@ export async function updateAction(id, data) {
     data.project_manager || null,
     data.program_manager || null,
     data.behalf_of || null,
+    data.manual_project_id || null,
+    data.account || null,
+    data.project_description || null,
   ];
 
   const { rows } = await pool.query(sql, params);

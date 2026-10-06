@@ -3,9 +3,8 @@
 export const TARGET_FIELDS = [
   { key: "so_number", label: "SO Number", required: false, aliases: ["SO", "SO Number", "Sales Order", "SO_No", "SO ID"] },
   { key: "manual_project_id", label: "Project ID", required: true, aliases: ["Project ID", "ProjectID", "Proj ID", "manual_project_id", "SO/Project ID"] },
-  { key: "project_description", label: "Project Description", required: true, aliases: ["Project Description", "Proj Desc", "Project Name", "Project_Description"] },
   { key: "project_manager", label: "Project Manager (PM)", required: true, aliases: ["PM", "Project Manager", "PM Name", "Project_Manager"] },
-  { key: "program_manager", label: "Program Manager (Headed By)", required: true, aliases: ["Headed By", "HeadedBy", "Program Manager", "PM Head", "Head", "program_manager"] },
+  { key: "program_manager", label: "Project Manager (Headed By)", required: true, aliases: ["Headed By", "HeadedBy", "Project Manager", "PM Head", "Head", "program_manager"] },
   { key: "scope_description", label: "Scope / Description", required: false, aliases: ["Description", "Scope", "Scope of Work", "Work Description", "Details"] },
   { key: "account", label: "Account / Customer", required: true, aliases: ["Account", "Customer", "Client", "Account Name", "Customer Name"] },
 ];
@@ -89,9 +88,8 @@ export const validateProjectRows = (mappedRows, existingProjects = []) => {
     // Required fields check
     if (!row.manual_project_id) errors.push("Missing Project ID");
     if (!row.account) errors.push("Missing Account Name");
-    if (!row.project_description) errors.push("Missing Project Description");
     if (!row.project_manager) errors.push("Missing Project Manager (PM)");
-    if (!row.program_manager) errors.push("Missing Program Manager (Headed By)");
+    if (!row.program_manager) errors.push("Missing Project Manager (Headed By)");
 
     const pIdLower = (row.manual_project_id || "").toLowerCase();
 

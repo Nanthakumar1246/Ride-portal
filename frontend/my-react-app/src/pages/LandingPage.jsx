@@ -29,7 +29,7 @@ function LandingPage() {
 
   return (
     <div className="h-screen overflow-hidden bg-brandBg text-brandDark flex flex-col">
-      {}
+      { }
       <header className="flex items-center justify-between px-4 sm:px-8 py-2">
         <div className="flex items-center gap-2">
           <img
@@ -40,28 +40,28 @@ function LandingPage() {
         </div>
       </header>
 
-      {}
+      { }
       <main className="flex-1 px-4 sm:px-8 pb-4 flex flex-col lg:flex-row gap-4 lg:gap-6 items-center justify-center overflow-hidden">
-        {}
+        { }
         <section className="w-full lg:w-1/2 space-y-4 sm:space-y-5 max-w-xl">
-          {}
+          { }
           <p className="font-urbanist text-[3px] sm:text-xs tracking-[0.25em] uppercase text-brandMuted ridc-animate-once">
             Risk · Issue · Dependency · Escalation
           </p>
 
-          {}
+          { }
           <h1 className="font-marcellus font-bold text-3xl sm:text-4xl lg:text-5xl text-brandDark leading-tight fade-in-left-slow-main tracking-tight mb-1">
             Manage delivery
             <br className="hidden sm:block" />
-            with clarity and control.
+            with clarity and control
           </h1>
 
-          {}
+          { }
           <p className="font-urbanist text-sm sm:text-base text-brandMuted max-w-xl fade-in-left-slower">
             Empowering teams to execute with precision, collaborate with purpose, and deliver with excellence across every project milestone.
           </p>
 
-          {}
+          { }
           <div className="flex flex-col sm:flex-row gap-4 sm:items-center fade-in-left-ctas">
             <div className="flex gap-3">
               <Link
@@ -74,7 +74,7 @@ function LandingPage() {
           </div>
         </section>
 
-        {}
+        { }
         <section className="w-full lg:w-1/2 flex justify-center items-center">
           <div className="hero-image-wrapper">
             <img

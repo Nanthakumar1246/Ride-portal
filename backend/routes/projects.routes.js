@@ -50,10 +50,9 @@ router.get("/", async (req, res) => {
       sql += ` AND program_manager = $${params.length}`;
     }
 
-    if (user.role === "PM") {
-      params.push(user.name);
-      sql += ` AND project_manager = $${params.length}`;
-    }
+    // No role-based narrowing: Account / Project / Project Manager are master
+    // data, and every authenticated user picks from the full list when
+    // creating a record.
 
     sql += ` ORDER BY COALESCE(manual_project_id, name) ASC LIMIT $${params.length + 1}`;
     params.push(Number(limit));
@@ -63,6 +62,96 @@ router.get("/", async (req, res) => {
   } catch (err) {
     console.error("Project master lookup error:", err);
     return res.status(500).json({ message: "Failed to fetch projects" });
+  }
+});
+
+// POST /api/projects/create - Create a single project
+router.post("/create", async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (user.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+
+    const manual_project_id = String(req.body.manual_project_id || req.body.name || "").trim();
+    const account = String(req.body.account || "").trim();
+    const project_description = String(req.body.project_description || req.body.description || "").trim();
+    const project_manager = String(req.body.project_manager || "").trim();
+    const program_manager = String(req.body.program_manager || "").trim();
+    const so_number = String(req.body.so_number || "").trim();
+    const scope_description = String(req.body.scope_description || "").trim();
+    const status = String(req.body.status || "Active").trim() || "Active";
+
+    if (!manual_project_id || !account) {
+      return res.status(400).json({ message: "Project ID and Account are required" });
+    }
+
+    const exists = await pool.query(
+      `SELECT id FROM projects WHERE manual_project_id = $1 OR name = $1 LIMIT 1`,
+      [manual_project_id]
+    );
+    if (exists.rows.length > 0) {
+      return res.status(409).json({ message: "Project ID already exists" });
+    }
+
+    let rows;
+    try {
+      const result = await pool.query(
+        `INSERT INTO projects (
+          name, manual_project_id, account, project_description, description,
+          project_manager, program_manager, so_number, scope_description, status, created_by
+        ) VALUES ($1, $1, $2, $3, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id, COALESCE(manual_project_id, name) as manual_project_id,
+          COALESCE(manual_project_id, name) as name,
+          COALESCE(project_description, description) as project_description,
+          so_number, project_manager, program_manager, scope_description, account,
+          COALESCE(status, 'Active') as status, created_at, updated_at`,
+        [
+          manual_project_id,
+          account,
+          project_description,
+          project_manager,
+          program_manager,
+          so_number,
+          scope_description,
+          status,
+          user.email || "System",
+        ]
+      );
+      rows = result.rows;
+    } catch (insertErr) {
+      // Fallback if status column is missing in older DBs
+      if (String(insertErr.message || "").toLowerCase().includes("status")) {
+        const result = await pool.query(
+          `INSERT INTO projects (
+            name, manual_project_id, account, project_description, description,
+            project_manager, program_manager, so_number, scope_description, created_by
+          ) VALUES ($1, $1, $2, $3, $3, $4, $5, $6, $7, $8)
+          RETURNING id, COALESCE(manual_project_id, name) as manual_project_id,
+            COALESCE(manual_project_id, name) as name,
+            COALESCE(project_description, description) as project_description,
+            so_number, project_manager, program_manager, scope_description, account,
+            created_at, updated_at`,
+          [
+            manual_project_id,
+            account,
+            project_description,
+            project_manager,
+            program_manager,
+            so_number,
+            scope_description,
+            user.email || "System",
+          ]
+        );
+        rows = result.rows.map((r) => ({ ...r, status: status || "Active" }));
+      } else {
+        throw insertErr;
+      }
+    }
+
+    return res.status(201).json(rows[0]);
+  } catch (err) {
+    console.error("Create project error:", err);
+    return res.status(500).json({ message: "Failed to create project: " + err.message });
   }
 });
 
@@ -78,10 +167,9 @@ router.get("/accounts", async (req, res) => {
       FROM projects
       WHERE account IS NOT NULL AND TRIM(account) != ''
     `;
-    if (user.role === "PM") {
-      params.push(user.name);
-      sql += ` AND project_manager = $${params.length}`;
-    }
+    // No role-based narrowing: Account / Project / Project Manager are master
+    // data, and every authenticated user picks from the full list when
+    // creating a record.
     sql += ` ORDER BY account ASC`;
     const { rows } = await pool.query(sql, params);
     return res.json(rows.map((r) => r.account));
@@ -91,7 +179,7 @@ router.get("/accounts", async (req, res) => {
   }
 });
 
-// GET /api/projects/managers - List distinct PMs and Program Managers
+// GET /api/projects/managers - List distinct PMs and Project Managers
 router.get("/managers", async (req, res) => {
   try {
     const user = req.user;
@@ -133,8 +221,8 @@ router.get("/program-managers", async (req, res) => {
     const { rows } = await pool.query(sql, [headed_by]);
     return res.json(rows.map((r) => r.project_manager));
   } catch (err) {
-    console.error("Error fetching program managers:", err);
-    return res.status(500).json({ message: "Failed to fetch program managers" });
+    console.error("Error fetching Project Managers:", err);
+    return res.status(500).json({ message: "Failed to fetch Project Managers" });
   }
 });
 
@@ -161,10 +249,9 @@ router.get("/by-account/:account", async (req, res) => {
       FROM projects
       WHERE account ILIKE $1
     `;
-    if (user.role === "PM") {
-      params.push(user.name);
-      sql += ` AND project_manager = $${params.length}`;
-    }
+    // No role-based narrowing: Account / Project / Project Manager are master
+    // data, and every authenticated user picks from the full list when
+    // creating a record.
     sql += ` ORDER BY COALESCE(manual_project_id, name) ASC`;
     const { rows } = await pool.query(sql, params);
     return res.json(rows);
@@ -327,6 +414,95 @@ router.post("/templates", async (req, res) => {
   } catch (err) {
     console.error("Save template error:", err);
     return res.status(500).json({ message: "Failed to save mapping template" });
+  }
+});
+
+// PUT /api/projects/update - Update PM and Project Manager (Headed By) only
+// Body: { id, project_manager, program_manager }
+router.put("/update", async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (user.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+
+    const id = req.body.id || req.body.project_id;
+    if (!id) return res.status(400).json({ message: "Project id is required" });
+
+    const existing = await pool.query(
+      `SELECT id, project_manager, program_manager FROM projects WHERE id = $1`,
+      [id]
+    );
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+
+    const project_manager =
+      req.body.project_manager !== undefined
+        ? String(req.body.project_manager).trim()
+        : existing.rows[0].project_manager || "";
+    const program_manager =
+      req.body.program_manager !== undefined
+        ? String(req.body.program_manager).trim()
+        : existing.rows[0].program_manager || "";
+
+    try {
+      const { rows } = await pool.query(
+        `UPDATE projects
+         SET project_manager = $1,
+             program_manager = $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3
+         RETURNING id, COALESCE(manual_project_id, name) as manual_project_id,
+           COALESCE(manual_project_id, name) as name,
+           COALESCE(project_description, description) as project_description,
+           so_number, project_manager, program_manager, scope_description, account,
+           COALESCE(status, 'Active') as status, created_at, updated_at`,
+        [project_manager, program_manager, id]
+      );
+      return res.json(rows[0]);
+    } catch (err) {
+      console.error("Update project error:", err);
+      const { rows } = await pool.query(
+        `UPDATE projects
+         SET project_manager = $1,
+             program_manager = $2,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $3
+         RETURNING id, COALESCE(manual_project_id, name) as manual_project_id,
+           COALESCE(manual_project_id, name) as name,
+           COALESCE(project_description, description) as project_description,
+           so_number, project_manager, program_manager, scope_description, account,
+           created_at, updated_at`,
+        [project_manager, program_manager, id]
+      );
+      if (!rows[0]) return res.status(404).json({ message: "Project not found" });
+      return res.json({ ...rows[0], status: "Active" });
+    }
+  } catch (err) {
+    console.error("Update project error:", err);
+    return res.status(500).json({ message: "Failed to update project: " + err.message });
+  }
+});
+
+// DELETE /api/projects/delete - Delete a single project
+// Body: { id }
+router.delete("/delete", async (req, res) => {
+  try {
+    const user = req.user;
+    if (!user) return res.status(401).json({ message: "Unauthorized" });
+    if (user.role !== "ADMIN") return res.status(403).json({ message: "Forbidden" });
+
+    const id = req.body.id || req.body.project_id || req.query.id;
+    if (!id) return res.status(400).json({ message: "Project id is required" });
+
+    const result = await pool.query(`DELETE FROM projects WHERE id = $1 RETURNING id`, [id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Project not found" });
+    }
+    return res.json({ message: "Project deleted", id: result.rows[0].id });
+  } catch (err) {
+    console.error("Delete project error:", err);
+    return res.status(500).json({ message: "Failed to delete project" });
   }
 });
 

@@ -1,13 +1,22 @@
-
 import pool from "../db.js";
+import { buildPmCreatorAndClause, isPmRole } from "../utils/filters.utils.js";
 
-export async function createModuleHistory({ module, record_id, updated_by, old_status, new_status, remarks }) {
+export async function createModuleHistory({ module, record_id, updated_by, old_status, new_status, remarks, attachment_name, attachment_path }) {
   const sql = `
-    INSERT INTO module_history (module, record_id, updated_by, old_status, new_status, remarks)
-    VALUES ($1, $2, $3, $4, $5, $6)
+    INSERT INTO module_history (module, record_id, updated_by, old_status, new_status, remarks, attachment_name, attachment_path)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
     RETURNING *;
   `;
-  const { rows } = await pool.query(sql, [module, record_id, updated_by || null, old_status || null, new_status || null, remarks || null]);
+  const { rows } = await pool.query(sql, [
+    module,
+    record_id,
+    updated_by || null,
+    old_status || null,
+    new_status || null,
+    remarks || null,
+    attachment_name || null,
+    attachment_path || null,
+  ]);
   return rows[0];
 }
 
@@ -20,11 +29,11 @@ const MODULE_TABLE_MAP = {
   appreciations: { table: "appreciations", codeCol: "appreciation_id" },
 };
 
-export async function findModuleHistory({ module, limit = 10, offset = 0, programManager = null }) {
+export async function findModuleHistory({ module, limit = 10, offset = 0, pmUser = null }) {
   const mapping = MODULE_TABLE_MAP[module];
 
   // Non-PM-scoped path (or unknown module — falls back to unscoped lookup)
-  if (!programManager || !mapping) {
+  if (!pmUser || !isPmRole(pmUser) || !mapping) {
     const countRes = await pool.query(`SELECT COUNT(*) AS c FROM module_history WHERE module = $1`, [module]);
     const total = Number(countRes.rows[0]?.c || 0);
 
@@ -37,18 +46,22 @@ export async function findModuleHistory({ module, limit = 10, offset = 0, progra
   }
 
   const { table, codeCol } = mapping;
+  const params = [module];
+  const clause = buildPmCreatorAndClause(table, pmUser, params, { alias: "t" });
   const joinClause = `
     FROM module_history h
     JOIN ${table} t ON (h.record_id::text = t.${codeCol}::text OR h.record_id::text = t.id::text)
-    WHERE h.module = $1 AND t.project_manager::text = $2::text
+    WHERE h.module = $1${clause}
   `;
 
-  const countRes = await pool.query(`SELECT COUNT(*) AS c ${joinClause}`, [module, programManager]);
+  const countRes = await pool.query(`SELECT COUNT(*) AS c ${joinClause}`, params);
   const total = Number(countRes.rows[0]?.c || 0);
 
+  const limitIdx = params.length + 1;
+  const offsetIdx = params.length + 2;
   const { rows } = await pool.query(
-    `SELECT h.* ${joinClause} ORDER BY h.created_at DESC LIMIT $3 OFFSET $4`,
-    [module, programManager, limit, offset]
+    `SELECT h.* ${joinClause} ORDER BY h.created_at DESC LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+    [...params, limit, offset]
   );
 
   return { rows, total };

@@ -106,7 +106,7 @@ const ManagerSubPersonInput = ({ value, onChange, placeholder, required, readOnl
                         if (!selectedMgr) setShowDropdown(true);
                         if (onFocus) onFocus(e);
                     }}
-                    placeholder={selectedMgr ? "Type Program Manager Name..." : "Select Headed By First..."}
+                    placeholder={selectedMgr ? "Type Project Manager Name..." : "Select Headed By First..."}
                     className="flex-1 bg-transparent border-none outline-none text-sm font-semibold text-gray-900 placeholder:text-gray-400 py-0.5"
                     list={selectedMgr ? `suggestions-${selectedMgr}` : undefined}
                     required={required}

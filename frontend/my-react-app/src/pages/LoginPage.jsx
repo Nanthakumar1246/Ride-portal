@@ -119,10 +119,12 @@ function LoginPage() {
 
 
       login(response.data);
-      if (response.data.user.role === "ADMIN") {
+      const role = String(response.data.user.role || "").toUpperCase();
+      if (role === "ADMIN" || role === "PM") {
+        // A PM gets the same dashboard, scoped to their own projects.
         navigate("/monitoring", { replace: true });
       } else {
-        navigate("/modules/risks?mode=view", { replace: true });
+        navigate("/monitoring/risks", { replace: true });
       }
 
     } catch (err) {

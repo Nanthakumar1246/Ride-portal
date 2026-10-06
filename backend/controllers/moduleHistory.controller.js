@@ -1,5 +1,5 @@
-
 import { findModuleHistory } from "../models/moduleHistory.model.js";
+import { isPmRole } from "../utils/filters.utils.js";
 
 export async function getModuleHistoryHandler(req, res) {
   try {
@@ -9,9 +9,9 @@ export async function getModuleHistoryHandler(req, res) {
     const limit = Math.max(1, parseInt(req.query.limit) || 10);
     const page = Math.max(1, parseInt(req.query.page) || 1);
     const offset = (page - 1) * limit;
-    const programManager = req.user?.role === "PM" ? req.user.name : null;
+    const pmUser = isPmRole(req.user) ? req.user : null;
 
-    const { rows, total } = await findModuleHistory({ module, limit, offset, programManager });
+    const { rows, total } = await findModuleHistory({ module, limit, offset, pmUser });
 
     return res.json({
       success: true,

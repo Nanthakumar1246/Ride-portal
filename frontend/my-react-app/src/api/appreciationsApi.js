@@ -60,6 +60,19 @@ export async function uploadAppreciationAttachmentApi(id, file) {
   return handleResponse(res);
 }
 
+/** Admin approves or rejects a submitted appreciation. */
+export async function decideAppreciationApi(id, decision) {
+  const res = await fetch(`${BASE_URL}/appreciations/${id}/decide`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+    },
+    body: JSON.stringify({ decision }),
+  });
+  return handleResponse(res);
+}
+
 export async function deleteAppreciationsApi(payload) {
   const res = await fetch(`${BASE_URL}/appreciations/delete-multiple`, {
     method: "POST",

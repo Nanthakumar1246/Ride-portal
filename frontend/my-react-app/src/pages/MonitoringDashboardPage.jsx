@@ -4,15 +4,63 @@ import { motion, useMotionValue, useTransform, animate } from "framer-motion";
 import { fetchDashboardMetrics, fetchNearingTat } from "../api/metricsApi";
 import { fetchGlobalSearch } from "../api/searchApi";
 import { fetchRisks } from "../api/risksApi";
+import { fetchIssues } from "../api/issuesApi";
+import { fetchDependencies } from "../api/dependenciesApi";
+import { fetchEscalations } from "../api/escalationsApi";
+import { fetchActions } from "../api/actionsApi";
 import { fetchAppreciations } from "../api/appreciationsApi";
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip
 } from "recharts";
 import { useFilter } from "../context/FilterContext";
 import { useSidebar } from "../context/SidebarContext";
+import useAutoRefresh from "../hooks/useAutoRefresh";
 import StackedColumnChart from "../components/StackedColumnChart";
-import { DownloadSimple, Clock, ArrowClockwise, TrendUp, ShieldWarning, CheckCircle, PauseCircle, FileText } from "phosphor-react";
+import { DownloadSimple, Clock, ArrowClockwise, ShieldWarning, CheckCircle, PauseCircle, Star } from "phosphor-react";
 import { exportToExcel } from "../utils/exportToExcel";
+import { formatDateOnly } from "../utils/dateFormat";
+import { AGING_BUCKETS, AGING_CONFIGS, matchesAgingFilter } from "../utils/agingUtils";
+
+const agingConfig = AGING_CONFIGS.dashboard;
+
+/* ── normalizes a raw record from any module into one shared shape for the
+   Priority Tracker and Aging Tracker widgets, which span all modules ── */
+const normalizeLogRow = (r, moduleLabel) => {
+  const idByModule = {
+    Risk: r.risk_id,
+    Issue: r.issue_id,
+    Dependency: r.dependency_id,
+    Escalation: r.escalation_id,
+    Action: r.action_id,
+  };
+  const ownerByModule = {
+    Risk: r.mitigation_owner || r.identified_by,
+    Issue: r.assigned_to || r.reported_by,
+    Dependency: r.contact_person,
+    Escalation: r.escalated_to,
+    Action: r.responsible || r.action_owner,
+  };
+  const dueDateByModule = {
+    Risk: r.target_mitigation_date || r.planned_closure_date || r.identified_date,
+    Issue: r.target_resolution_date || r.due_date,
+    Dependency: r.required_by_date || r.due_date,
+    Escalation: r.target_resolution_date || r.due_date,
+    Action: r.target_date || r.due_date,
+  };
+
+  return {
+    id: r.id,
+    module: moduleLabel,
+    item_id: idByModule[moduleLabel] || r.id,
+    account: r.account,
+    manual_project_id: r.manual_project_id,
+    owner: ownerByModule[moduleLabel] || "—",
+    priority: r.priority,
+    due_date: dueDateByModule[moduleLabel],
+    status: r.status || r.current_status,
+    updated_at: r.updated_at || r.last_reviewed_date,
+  };
+};
 
 /* ── colour maps ── */
 const KPI_CONFIG = [
@@ -29,10 +77,43 @@ const PRI_CONFIG = [
   { key: "Low",      color: "#10B981", light: "#ECFDF5" },
 ];
 
-const DONUT_COLORS = { High: "#EF4444", Medium: "#F59E0B", Low: "#10B981", Critical: "#991B1B" };
+const DONUT_COLORS = {
+  Critical: "#991B1B",
+  High: "#EF4444",
+  Medium: "#F59E0B",
+  Low: "#10B981",
+  Unset: "#94A3B8",
+};
 
-const API_HOST = process.env.REACT_APP_API_URL || "http://localhost:5000";
-const toFileUrl = (path) => (path ? `${API_HOST}/${path}` : null);
+const API_ORIGIN = (process.env.REACT_APP_API_URL || "http://localhost:5000").replace(/\/api\/?$/, "");
+
+const resolveUploadUrl = (path) => {
+  if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalized = String(path).replace(/\\/g, "/");
+  const uploadsIdx = normalized.toLowerCase().lastIndexOf("uploads/");
+  const relative = uploadsIdx >= 0 ? normalized.slice(uploadsIdx) : normalized.replace(/^\//, "");
+  return `${API_ORIGIN}/${relative}`;
+};
+
+const getAppreciationPhotoUrl = (row) => {
+  if (!row) return null;
+  if (row.image_url) return resolveUploadUrl(row.image_url);
+  const path = row.attachment_url || "";
+  if (/\.(png|jpe?g|webp|gif)$/i.test(path) || String(row.file_type || "").startsWith("image/")) {
+    return resolveUploadUrl(path);
+  }
+  return null;
+};
+
+const getInitials = (name) => {
+  if (!name) return "TM";
+  const parts = String(name).trim().split(/\s+/);
+  if (parts.length >= 2) {
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  }
+  return String(name).slice(0, 2).toUpperCase();
+};
 
 const AnimatedCounter = ({ value, delay = 0 }) => {
   const count = useMotionValue(0);
@@ -61,6 +142,7 @@ const Card = ({ title, children, className = "", delay = 0 }) => (
 
 const MonitoringDashboardPage = () => {
   const { selectedManager } = useFilter();
+
   const navigate = useNavigate();
   const location = useLocation();
   const searchQuery = new URLSearchParams(location.search).get("search") || "";
@@ -72,14 +154,19 @@ const MonitoringDashboardPage = () => {
   const [priorityByModule, setPriorityByModule] = useState({});
   const [appreciations, setAppreciations] = useState([]);
   const [currentAppSlide, setCurrentAppSlide] = useState(0);
-  const [previewImage, setPreviewImage] = useState(null);
+  const [detailRow, setDetailRow] = useState(null);
   const [tatRows, setTatRows] = useState([]);
   const [tatPage, setTatPage] = useState(1);
   const [tatTotalPages, setTatTotalPages] = useState(1);
   const TAT_PAGE_SIZE = 5;
   const [allRisks, setAllRisks] = useState([]);
+  const [allIssues, setAllIssues] = useState([]);
+  const [allDependencies, setAllDependencies] = useState([]);
+  const [allEscalations, setAllEscalations] = useState([]);
+  const [allActions, setAllActions] = useState([]);
   const [loadingRisks, setLoadingRisks] = useState(true);
   const [toast, setToast] = useState(false);
+  const [agingFilter, setAgingFilter] = useState("");
 
   const { sidebarJustClosed, sidebarOpen, sidebarClosing } = useSidebar();
   const [contentReady, setContentReady] = useState(() => !sidebarOpen && !sidebarClosing);
@@ -128,11 +215,21 @@ const MonitoringDashboardPage = () => {
 
     try {
       setLoadingRisks(true);
-      const rRes = await fetchRisks({ manager: selectedManager });
-      const rData = Array.isArray(rRes) ? rRes : (rRes?.data || []);
-      setAllRisks(rData);
+      const [rRes, iRes, dRes, eRes, aRes] = await Promise.all([
+        fetchRisks({ manager: selectedManager }),
+        fetchIssues({ manager: selectedManager }),
+        fetchDependencies({ manager: selectedManager }),
+        fetchEscalations({ manager: selectedManager }),
+        fetchActions({ manager: selectedManager }),
+      ]);
+      const asArray = (res) => (Array.isArray(res) ? res : (res?.data || []));
+      setAllRisks(asArray(rRes));
+      setAllIssues(asArray(iRes));
+      setAllDependencies(asArray(dRes));
+      setAllEscalations(asArray(eRes));
+      setAllActions(asArray(aRes));
     } catch (err) {
-      console.error("Failed to load risks", err);
+      console.error("Failed to load module logs", err);
     } finally {
       setLoadingRisks(false);
     }
@@ -141,6 +238,8 @@ const MonitoringDashboardPage = () => {
   useEffect(() => {
     loadData();
   }, [selectedManager]);
+
+  useAutoRefresh(loadData, 30000);
 
   useEffect(() => {
     fetchNearingTat({ limit: TAT_PAGE_SIZE, offset: (tatPage - 1) * TAT_PAGE_SIZE })
@@ -170,29 +269,48 @@ const MonitoringDashboardPage = () => {
     ? priorityByModule[selectedModule]
     : { Critical: 0, High: 0, Medium: 0, Low: 0 };
 
-  // Calculate live Priority counts across ALL open risks
-  const openRisksList = allRisks.filter(r => {
+  // Combine open logs across ALL modules — Priority Tracker and Aging
+  // Tracker below are meant to reflect the whole portfolio, not just Risks.
+  const isOpenStatus = (r) => {
     const s = String(r.status || r.current_status || "").toLowerCase();
     return s === "open" || s === "in progress" || s === "on hold" || s === "closure submitted";
+  };
+
+  const allModuleLogs = [
+    ...allRisks.map((r) => normalizeLogRow(r, "Risk")),
+    ...allIssues.map((r) => normalizeLogRow(r, "Issue")),
+    ...allDependencies.map((r) => normalizeLogRow(r, "Dependency")),
+    ...allEscalations.map((r) => normalizeLogRow(r, "Escalation")),
+    ...allActions.map((r) => normalizeLogRow(r, "Action")),
+  ];
+
+  const openRisksList = allModuleLogs.filter(isOpenStatus);
+
+  // Bucket every open log so Critical+High+Medium+Low+Unset === openCount
+  const priorityCounts = { Critical: 0, High: 0, Medium: 0, Low: 0, Unset: 0 };
+  openRisksList.forEach((r) => {
+    const p = String(r.priority || "").trim().toLowerCase();
+    if (p.includes("critical")) priorityCounts.Critical++;
+    else if (p.includes("high")) priorityCounts.High++;
+    else if (p.includes("medium")) priorityCounts.Medium++;
+    else if (p.includes("low")) priorityCounts.Low++;
+    else priorityCounts.Unset++; // blank / N/A / unexpected values — never drop silently
   });
 
-  const priorityCounts = { High: 0, Medium: 0, Low: 0, Critical: 0 };
-  openRisksList.forEach(r => {
-    const p = String(r.priority || "").trim();
-    if (p.includes("High")) priorityCounts.High++;
-    else if (p.includes("Medium")) priorityCounts.Medium++;
-    else if (p.includes("Low")) priorityCounts.Low++;
-    else if (p.includes("Critical")) priorityCounts.Critical++;
-  });
+  const prioritySideRows = [
+    { key: "Critical", label: "Critical", count: priorityCounts.Critical, dot: "bg-rose-800", wrap: "bg-rose-50 border-rose-100/80", text: "text-rose-800" },
+    { key: "High", label: "High", count: priorityCounts.High, dot: "bg-red-500", wrap: "bg-red-50 border-red-100/80", text: "text-red-700" },
+    { key: "Medium", label: "Medium", count: priorityCounts.Medium, dot: "bg-amber-500", wrap: "bg-amber-50 border-amber-100/80", text: "text-amber-700" },
+    { key: "Low", label: "Low", count: priorityCounts.Low, dot: "bg-emerald-500", wrap: "bg-emerald-50 border-emerald-100/80", text: "text-emerald-700" },
+    { key: "Unset", label: "Unset", count: priorityCounts.Unset, dot: "bg-slate-400", wrap: "bg-slate-50 border-slate-100/80", text: "text-slate-600" },
+  ];
 
-  const donutData = [
-    { priority: "High", count: priorityCounts.High },
-    { priority: "Medium", count: priorityCounts.Medium },
-    { priority: "Low", count: priorityCounts.Low },
-  ].filter(d => d.count >= 0);
+  const donutData = prioritySideRows
+    .map(({ key, count }) => ({ priority: key, count }))
+    .filter((d) => d.count > 0);
 
   // Calculate Aging Metrics
-  const totalRisksCount = allRisks.length;
+  const totalRisksCount = allModuleLogs.length;
   const openCount = openRisksList.length;
   const openPercentage = totalRisksCount > 0 ? Math.round((openCount / totalRisksCount) * 100) : 0;
 
@@ -205,7 +323,7 @@ const MonitoringDashboardPage = () => {
   today.setHours(0,0,0,0);
 
   openRisksList.forEach(r => {
-    const dateStr = r.target_mitigation_date || r.planned_closure_date || r.identified_date;
+    const dateStr = r.due_date;
     if (!dateStr) {
       onTrackCount++;
       return;
@@ -225,6 +343,42 @@ const MonitoringDashboardPage = () => {
       onTrackCount++;
     }
   });
+
+  const agingBarTotal = overdueCount + dueTodayTomorrowCount + dueThisWeekCount + onTrackCount || openCount;
+
+  const handleAgingFilterClick = (bucket) => {
+    setAgingFilter((prev) => (prev === bucket ? "" : bucket));
+    setTatPage(1);
+  };
+
+  /* ── Aging Overview drill-down ──────────────────────────────────────────
+     Clicking a bucket (bar segment or legend entry) opens a popup listing the
+     logs in it; clicking one of those logs jumps to that module's own page,
+     pre-searched on the log's ID. ── */
+  const MODULE_ROUTES = {
+    Risk: "/monitoring/risks",
+    Issue: "/monitoring/issues",
+    Dependency: "/monitoring/dependencies",
+    Escalation: "/monitoring/escalations",
+    Action: "/monitoring/actions",
+  };
+
+  const goToModuleRecord = (row) => {
+    const route = MODULE_ROUTES[row?.module];
+    if (!route) return;
+    navigate(`${route}?search=${encodeURIComponent(row.item_id || "")}`);
+  };
+
+  const filteredAgingTrackerRows = agingFilter
+    ? openRisksList.filter((r) => matchesAgingFilter(r, agingConfig, agingFilter))
+    : tatRows;
+
+  const displayedAgingRows = agingFilter
+    ? filteredAgingTrackerRows.slice((tatPage - 1) * TAT_PAGE_SIZE, tatPage * TAT_PAGE_SIZE)
+    : tatRows;
+  const displayedAgingTotalPages = agingFilter
+    ? Math.max(1, Math.ceil(filteredAgingTrackerRows.length / TAT_PAGE_SIZE))
+    : tatTotalPages;
 
   const handleExportAging = async () => {
     try {
@@ -331,34 +485,7 @@ const MonitoringDashboardPage = () => {
       ) : (
         <>
           {/* ── Executive KPI Cards Grid Row ── */}
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5 items-stretch">
-            {/* Command Center Launcher Card */}
-            <motion.div
-              onClick={() => navigate("/monitoring/command-center")}
-              initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-              whileHover={{ y: -2 }}
-              className="bg-white rounded-2xl border border-gray-200 border-l-4 border-l-indigo-600 p-4 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col justify-between group"
-            >
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-md border border-indigo-100">
-                  HUB
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center border border-indigo-100 group-hover:bg-indigo-600 group-hover:text-white transition-colors shrink-0">
-                  <TrendUp size={18} weight="bold" />
-                </div>
-              </div>
-              <div className="my-2">
-                <h3 className="text-base font-extrabold text-gray-900 leading-tight group-hover:text-indigo-600 transition-colors">Command Center</h3>
-                <p className="text-[11px] font-bold text-gray-400 mt-0.5">
-                  {selectedManager ? `Filtered: ${selectedManager}` : "All Enterprise Managers"}
-                </p>
-              </div>
-              <div className="flex items-center justify-between border-t border-gray-100 pt-2 text-[10px] font-extrabold text-indigo-600 group-hover:text-indigo-800">
-                <span>Click to explore</span>
-                <span>→</span>
-              </div>
-            </motion.div>
-
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 items-stretch">
             {/* KPI Card 1: OPEN */}
             <motion.div
               onClick={() => navigate("/monitoring/command-center?status=Open")}
@@ -507,12 +634,12 @@ const MonitoringDashboardPage = () => {
           {/* ── Top Dashboard Grid ── */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
             {/* Merged Card: Priority Tracker — Across Your Open Logs */}
-            <Card title="Priority Tracker — Across Your Open Logs" delay={0.2} className="h-64 lg:col-span-2">
+            <Card title="Priority Tracker — Across Your Open Logs" delay={0.2} className="h-72 lg:col-span-2">
               <div className="flex flex-col md:flex-row h-full items-center justify-between gap-4 p-1">
                 {/* Left Side: Live Donut & Dynamic Counts */}
                 <div className="w-full md:w-1/2 flex flex-col h-full justify-between border-b md:border-b-0 md:border-r border-gray-100 pr-0 md:pr-3 pb-2 md:pb-0">
-                  <div className="flex items-center justify-between h-36 gap-2">
-                    <div className="w-1/2 h-full relative flex items-center justify-center min-w-0">
+                  <div className="flex items-center justify-between min-h-[10.5rem] gap-2">
+                    <div className="w-1/2 h-36 relative flex items-center justify-center min-w-0 self-center">
                       <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
@@ -539,32 +666,23 @@ const MonitoringDashboardPage = () => {
                       </div>
                     </div>
 
-                    <div className="w-1/2 flex flex-col gap-1 pl-1 justify-center min-w-0">
-                      <div className="flex items-center justify-between px-2 py-1 rounded-md bg-red-50 border border-red-100/80">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
-                          <span className="text-[10px] font-bold text-red-700 truncate">High</span>
+                    <div className="w-1/2 flex flex-col gap-0.5 pl-1 justify-center min-w-0">
+                      {prioritySideRows.map((row) => (
+                        <div
+                          key={row.key}
+                          className={`flex items-center justify-between px-2 py-0.5 rounded-md border ${row.wrap}`}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className={`w-2 h-2 rounded-full shrink-0 ${row.dot}`} />
+                            <span className={`text-[10px] font-bold truncate ${row.text}`}>{row.label}</span>
+                          </div>
+                          <span className={`text-xs font-black ml-1 shrink-0 ${row.text}`}>{row.count}</span>
                         </div>
-                        <span className="text-xs font-black text-red-700 ml-1 shrink-0">{priorityCounts.High}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-2 py-1 rounded-md bg-amber-50 border border-amber-100/80">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                          <span className="text-[10px] font-bold text-amber-700 truncate">Medium</span>
-                        </div>
-                        <span className="text-xs font-black text-amber-700 ml-1 shrink-0">{priorityCounts.Medium}</span>
-                      </div>
-                      <div className="flex items-center justify-between px-2 py-1 rounded-md bg-emerald-50 border border-emerald-100/80">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-                          <span className="text-[10px] font-bold text-emerald-700 truncate">Low</span>
-                        </div>
-                        <span className="text-xs font-black text-emerald-700 ml-1 shrink-0">{priorityCounts.Low}</span>
-                      </div>
+                      ))}
                     </div>
                   </div>
                   <div className="text-[9px] text-gray-400 text-center italic font-semibold pt-1 border-t border-gray-100/60 truncate">
-                    Live dynamic counts from all Open Logs
+                    Critical + High + Medium + Low + Unset = {openCount} open
                   </div>
                 </div>
 
@@ -617,68 +735,74 @@ const MonitoringDashboardPage = () => {
               <div className="flex-1 min-h-0 px-2 pb-1 relative flex items-center">
                 {/* Left Arrow */}
                 <button
+                  type="button"
                   onClick={() => setCurrentAppSlide(i => Math.max(0, i - 1))}
                   className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors"
                 >
                   ‹
                 </button>
 
-                {appreciations.length > 0 ? (
-                  <motion.div
-                    key={currentAppSlide}
-                    initial={{ opacity: 0, x: 10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                    className="flex-1 px-1 flex gap-2 items-start min-w-0"
-                  >
-                    {appreciations[currentAppSlide]?.image_url ? (
-                      <button
-                        type="button"
-                        onClick={() => setPreviewImage(toFileUrl(appreciations[currentAppSlide].image_url))}
-                        className="shrink-0 w-16 h-16 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden"
-                        title="Click to preview"
-                      >
-                        <img
-                          src={toFileUrl(appreciations[currentAppSlide].image_url)}
-                          alt="Appreciation attachment"
-                          style={{ objectFit: "contain", width: "100%", height: "100%" }}
-                        />
-                      </button>
-                    ) : appreciations[currentAppSlide]?.attachment_url ? (
-                      <a
-                        href={toFileUrl(appreciations[currentAppSlide].attachment_url)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 w-16 h-16 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center text-gray-400 hover:text-indigo-600 hover:border-indigo-200 transition-colors"
-                        title="Open attachment"
-                      >
-                        <FileText size={28} weight="duotone" />
-                      </a>
-                    ) : null}
+                {appreciations.length > 0 ? (() => {
+                  const item = appreciations[currentAppSlide] || {};
+                  const team = item.team_members_recognized || "—";
+                  const displayName = team !== "—"
+                    ? team.split(/[,;]/)[0].trim()
+                    : (item.recorded_by || "Team Member");
+                  const account = item.account || item.customer_name || "—";
+                  const project = item.project_description || item.manual_project_id || "";
+                  const photoUrl = getAppreciationPhotoUrl(item);
+                  const initials = getInitials(team !== "—" ? team : item.recorded_by);
+                  const quote = item.subject || item.details || "";
+                  const dateStr = item.received_date || item.created_at;
 
-                    <div className="min-w-0 flex-1">
-                      {/* Medal + Title row */}
-                      <div className="flex items-start gap-2 mb-1">
-                        <span className="text-lg leading-none shrink-0">🥇</span>
-                        <p className="font-bold text-[12px] text-gray-900 leading-snug line-clamp-2">
-                          {appreciations[currentAppSlide]?.appreciation_type || "Spot Award"} to {appreciations[currentAppSlide]?.appreciated_to || appreciations[currentAppSlide]?.team_members_recognized || "Team Member"}
-                        </p>
+                  return (
+                    <motion.button
+                      key={currentAppSlide}
+                      type="button"
+                      onClick={() => setDetailRow(item)}
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.35, ease: "easeOut" }}
+                      className="flex-1 px-1 flex flex-col items-center min-w-0 text-left focus:outline-none focus:ring-2 focus:ring-rose-400 rounded-lg"
+                    >
+                      {photoUrl ? (
+                        <img
+                          src={photoUrl}
+                          alt={displayName}
+                          className="shrink-0 w-14 h-14 rounded-full object-cover border-4 border-white shadow-md"
+                          onError={(e) => { e.currentTarget.style.display = "none"; }}
+                        />
+                      ) : (
+                        <div className="shrink-0 w-14 h-14 rounded-full bg-rose-400 text-white font-black text-sm flex items-center justify-center shadow-md">
+                          {initials}
+                        </div>
+                      )}
+
+                      <div className="flex items-center gap-0.5 mt-1.5">
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} size={11} weight="fill" className="text-rose-400" />
+                        ))}
                       </div>
 
-                      {/* by X for "Y" on Date */}
-                      <p className="text-[11px] text-gray-500 leading-snug line-clamp-3">
-                        <span className="text-gray-400">by </span>
-                        <span className="text-gray-700 font-semibold">{appreciations[currentAppSlide]?.appreciated_by || appreciations[currentAppSlide]?.customer_name || appreciations[currentAppSlide]?.account || "Client"}</span>
-                        {(appreciations[currentAppSlide]?.description || appreciations[currentAppSlide]?.subject || appreciations[currentAppSlide]?.details) && (
-                          <span> for <span className="text-indigo-600">"{appreciations[currentAppSlide]?.description || appreciations[currentAppSlide]?.subject || appreciations[currentAppSlide]?.details}"</span></span>
-                        )}
-                        {(appreciations[currentAppSlide]?.created_date || appreciations[currentAppSlide]?.received_date) && (
-                          <span className="text-gray-500"> on {new Date(appreciations[currentAppSlide].created_date || appreciations[currentAppSlide].received_date).toDateString()}</span>
-                        )}
+                      <p className="font-black text-[12px] text-gray-900 leading-snug text-center mt-1 truncate max-w-full" title={displayName}>
+                        {displayName}
                       </p>
-                    </div>
-                  </motion.div>
-                ) : (
+                      <p className="text-[10px] text-gray-400 font-semibold text-center truncate max-w-full">
+                        {account}{project ? ` · ${project}` : ""}
+                      </p>
+                      {dateStr && (
+                        <p className="text-[9px] text-gray-300 font-bold uppercase tracking-wider mt-0.5">
+                          {formatDateOnly(dateStr)}
+                        </p>
+                      )}
+                      {quote && (
+                        <div className="mt-2 w-full rounded-lg bg-rose-50 px-2.5 py-1.5 text-center">
+                          <p className="text-[10px] text-gray-700 leading-snug line-clamp-2">{quote}</p>
+                        </div>
+                      )}
+                    </motion.button>
+                  );
+                })() : (
                   <div className="flex-1 flex items-center justify-center text-gray-300 text-xs font-semibold">
                     No Appreciations Yet
                   </div>
@@ -686,6 +810,7 @@ const MonitoringDashboardPage = () => {
 
                 {/* Right Arrow */}
                 <button
+                  type="button"
                   onClick={() => setCurrentAppSlide(i => Math.min(appreciations.length - 1, i + 1))}
                   className="shrink-0 w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-700 transition-colors"
                 >
@@ -696,6 +821,7 @@ const MonitoringDashboardPage = () => {
               {/* View More */}
               <div className="border-t border-gray-100 py-2.5 text-center flex-shrink-0">
                 <button
+                  type="button"
                   onClick={() => navigate("/monitoring/appreciations")}
                   className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 uppercase tracking-wider transition-colors"
                 >
@@ -705,16 +831,119 @@ const MonitoringDashboardPage = () => {
             </motion.div>
           </div>
 
-          {previewImage && (
+          {detailRow && (
             <div
-              className="fixed inset-0 z-[999] bg-black/70 flex items-center justify-center p-6 cursor-zoom-out"
-              onClick={() => setPreviewImage(null)}
+              className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/40 backdrop-blur-[2px]"
+              onClick={() => setDetailRow(null)}
             >
-              <img
-                src={previewImage}
-                alt="Appreciation attachment preview"
-                style={{ objectFit: "contain", maxWidth: "90vw", maxHeight: "90vh" }}
-              />
+              <div
+                className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden border border-gray-200"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-100 bg-rose-50/60 shrink-0">
+                  <div>
+                    <h3 className="text-sm font-extrabold text-gray-900 tracking-tight">
+                      Appreciation Details
+                    </h3>
+                    <p className="text-[11px] text-rose-700 font-bold mt-0.5">
+                      {detailRow.appreciation_id || "—"}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDetailRow(null)}
+                    className="w-8 h-8 rounded-full bg-white border border-gray-200 text-gray-500 hover:text-gray-800 hover:bg-gray-50 text-lg font-bold leading-none"
+                    aria-label="Close"
+                  >
+                    ×
+                  </button>
+                </div>
+
+                <div className="overflow-y-auto px-5 py-4 space-y-4">
+                  {(detailRow.image_url || detailRow.attachment_url) && (
+                    <div className="rounded-xl border border-rose-100 overflow-hidden bg-rose-50/30">
+                      {getAppreciationPhotoUrl(detailRow) ? (
+                        <img
+                          src={getAppreciationPhotoUrl(detailRow)}
+                          alt="Appreciation photo"
+                          className="w-full max-h-64 object-contain bg-white"
+                        />
+                      ) : (
+                        <a
+                          href={resolveUploadUrl(detailRow.attachment_url)}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="block px-4 py-3 text-sm font-bold text-rose-700 hover:underline"
+                        >
+                          📎 View attachment
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {[
+                      { label: "Appreciation ID", value: detailRow.appreciation_id },
+                      { label: "Scope", value: detailRow.appreciation_scope || "Internal Appreciation" },
+                      { label: "Account / Customer", value: detailRow.account || detailRow.customer_name },
+                      { label: "Customer Contact", value: detailRow.customer_contact },
+                      { label: "Project ID", value: detailRow.manual_project_id },
+                      { label: "Project Description", value: detailRow.project_description },
+                      { label: "Project Manager", value: detailRow.project_manager },
+                      { label: "Program Manager", value: detailRow.program_manager },
+                      { label: "Behalf Of", value: detailRow.behalf_of },
+                      { label: "Appreciation Type", value: detailRow.appreciation_type },
+                      { label: "Received Date", value: formatDateOnly(detailRow.received_date) },
+                      { label: "Recorded By", value: detailRow.recorded_by },
+                      { label: "Team Recognized", value: detailRow.team_members_recognized },
+                      { label: "Follow-up Action", value: detailRow.follow_up_action },
+                      { label: "Subject", value: detailRow.subject },
+                    ].map((field) => (
+                      <div
+                        key={field.label}
+                        className="rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5"
+                      >
+                        <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1">
+                          {field.label}
+                        </span>
+                        <span className="text-sm font-semibold text-gray-800 break-words whitespace-pre-wrap">
+                          {field.value || "—"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-xl border border-rose-100 bg-rose-50/40 px-4 py-3">
+                    <span className="block text-[10px] font-black uppercase tracking-wider text-rose-500 mb-2">
+                      Details
+                    </span>
+                    <p className="text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words font-medium">
+                      {detailRow.details || "—"}
+                    </p>
+                  </div>
+
+                  {detailRow.comments && (
+                    <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3">
+                      <span className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-2">
+                        Comments
+                      </span>
+                      <p className="text-sm text-gray-700 whitespace-pre-wrap break-words">
+                        {detailRow.comments}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                <div className="px-5 py-3 border-t border-gray-100 bg-gray-50 shrink-0 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setDetailRow(null)}
+                    className="px-4 py-2 rounded-xl bg-gray-900 text-white text-xs font-bold uppercase tracking-wide hover:bg-gray-800 transition"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
@@ -734,15 +963,16 @@ const MonitoringDashboardPage = () => {
 
             {/* Segmented Progress Pill Bar with Smooth Animations & Inner Numbers */}
             <div className="w-full h-5 rounded-full bg-gray-100 overflow-hidden flex shadow-inner p-0.5">
-              {openCount > 0 ? (
+              {agingBarTotal > 0 ? (
                 <>
                   {overdueCount > 0 && (
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${(overdueCount / openCount) * 100}%` }}
+                      animate={{ width: `${(overdueCount / agingBarTotal) * 100}%` }}
                       transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
-                      className="bg-[#FF5252] h-full rounded-l-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                      className={`bg-[#FF5252] h-full rounded-l-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.OVERDUE ? "ring-2 ring-rose-300 ring-offset-1" : ""}`}
                       title={`Overdue: ${overdueCount}`}
+                      onClick={() => handleAgingFilterClick(AGING_BUCKETS.OVERDUE)}
                     >
                       {overdueCount}
                     </motion.div>
@@ -750,10 +980,11 @@ const MonitoringDashboardPage = () => {
                   {dueTodayTomorrowCount > 0 && (
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${(dueTodayTomorrowCount / openCount) * 100}%` }}
+                      animate={{ width: `${(dueTodayTomorrowCount / agingBarTotal) * 100}%` }}
                       transition={{ duration: 0.8, ease: "easeOut", delay: 0.35 }}
-                      className="bg-[#FFA726] h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                      className={`bg-[#FFA726] h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.DUE_TODAY_TOMORROW ? "ring-2 ring-amber-300 ring-offset-1" : ""}`}
                       title={`Due Today / Tomorrow: ${dueTodayTomorrowCount}`}
+                      onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_TODAY_TOMORROW)}
                     >
                       {dueTodayTomorrowCount}
                     </motion.div>
@@ -761,10 +992,11 @@ const MonitoringDashboardPage = () => {
                   {dueThisWeekCount > 0 && (
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${(dueThisWeekCount / openCount) * 100}%` }}
+                      animate={{ width: `${(dueThisWeekCount / agingBarTotal) * 100}%` }}
                       transition={{ duration: 0.8, ease: "easeOut", delay: 0.5 }}
-                      className="bg-[#42A5F5] h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                      className={`bg-[#42A5F5] h-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.DUE_THIS_WEEK ? "ring-2 ring-sky-300 ring-offset-1" : ""}`}
                       title={`Due This Week: ${dueThisWeekCount}`}
+                      onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_THIS_WEEK)}
                     >
                       {dueThisWeekCount}
                     </motion.div>
@@ -772,10 +1004,11 @@ const MonitoringDashboardPage = () => {
                   {onTrackCount > 0 && (
                     <motion.div
                       initial={{ width: 0 }}
-                      animate={{ width: `${(onTrackCount / openCount) * 100}%` }}
+                      animate={{ width: `${(onTrackCount / agingBarTotal) * 100}%` }}
                       transition={{ duration: 0.8, ease: "easeOut", delay: 0.65 }}
-                      className="bg-[#26A69A] h-full rounded-r-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden"
+                      className={`bg-[#26A69A] h-full rounded-r-full flex items-center justify-center text-[10px] font-black text-white px-1 shadow-xs overflow-hidden cursor-pointer hover:opacity-90 ${agingFilter === AGING_BUCKETS.ON_TRACK ? "ring-2 ring-emerald-300 ring-offset-1" : ""}`}
                       title={`On Track: ${onTrackCount}`}
+                      onClick={() => handleAgingFilterClick(AGING_BUCKETS.ON_TRACK)}
                     >
                       {onTrackCount}
                     </motion.div>
@@ -790,19 +1023,38 @@ const MonitoringDashboardPage = () => {
 
             {/* Legend Line matching exact screenshot text format */}
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-bold text-gray-700 pt-0.5">
-              <div className="flex items-center gap-1.5">
+              <div
+                className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${!agingFilter ? "bg-gray-100 ring-1 ring-gray-300" : "hover:bg-gray-50"}`}
+                onClick={() => setAgingFilter("")}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-gray-500 shrink-0" />
+                <span>All ({overdueCount + dueTodayTomorrowCount + dueThisWeekCount + onTrackCount})</span>
+              </div>
+              <div
+                className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.OVERDUE ? "bg-rose-50 ring-1 ring-rose-200" : "hover:bg-gray-50"}`}
+                onClick={() => handleAgingFilterClick(AGING_BUCKETS.OVERDUE)}
+              >
                 <span className="w-2.5 h-2.5 rounded-full bg-[#FF5252] shrink-0" />
                 <span>Overdue ({overdueCount})</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div
+                className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.DUE_TODAY_TOMORROW ? "bg-amber-50 ring-1 ring-amber-200" : "hover:bg-gray-50"}`}
+                onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_TODAY_TOMORROW)}
+              >
                 <span className="w-2.5 h-2.5 rounded-full bg-[#FFA726] shrink-0" />
                 <span>Due Today/Tomorrow ({dueTodayTomorrowCount})</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div
+                className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.DUE_THIS_WEEK ? "bg-sky-50 ring-1 ring-sky-200" : "hover:bg-gray-50"}`}
+                onClick={() => handleAgingFilterClick(AGING_BUCKETS.DUE_THIS_WEEK)}
+              >
                 <span className="w-2.5 h-2.5 rounded-full bg-[#42A5F5] shrink-0" />
                 <span>Due This Week ({dueThisWeekCount})</span>
               </div>
-              <div className="flex items-center gap-1.5">
+              <div
+                className={`flex items-center gap-1.5 cursor-pointer rounded-md px-1.5 py-0.5 transition-colors ${agingFilter === AGING_BUCKETS.ON_TRACK ? "bg-emerald-50 ring-1 ring-emerald-200" : "hover:bg-gray-50"}`}
+                onClick={() => handleAgingFilterClick(AGING_BUCKETS.ON_TRACK)}
+              >
                 <span className="w-2.5 h-2.5 rounded-full bg-[#26A69A] shrink-0" />
                 <span>On Track ({onTrackCount})</span>
               </div>
@@ -837,10 +1089,9 @@ const MonitoringDashboardPage = () => {
                 <table className="w-full text-left text-xs">
                   <thead className="bg-gray-100 sticky top-0 z-10 text-gray-600 font-bold uppercase text-[10px]">
                     <tr>
-                      <th className="p-2.5">Module</th>
                       <th className="p-2.5">ID</th>
-                      <th className="p-2.5">Customer</th>
-                      <th className="p-2.5">Project</th>
+                      <th className="p-2.5">Module</th>
+                      <th className="p-2.5">Customer / Account</th>
                       <th className="p-2.5">Owner</th>
                       <th className="p-2.5">Priority</th>
                       <th className="p-2.5">Due Date</th>
@@ -849,7 +1100,7 @@ const MonitoringDashboardPage = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {tatRows.map((row, idx) => {
+                    {displayedAgingRows.map((row, idx) => {
                       const pri = String(row.priority || "").toLowerCase();
                       const isHigh = pri.includes("high") || pri.includes("critical");
                       return (
@@ -860,10 +1111,18 @@ const MonitoringDashboardPage = () => {
                           transition={{ duration: 0.3, delay: idx * 0.04 }}
                           className="border-b border-gray-200/60 hover:bg-indigo-50/50 transition-colors"
                         >
+                          <td className="p-2.5 font-bold text-indigo-700">
+                            <button
+                              type="button"
+                              onClick={() => goToModuleRecord(row)}
+                              title={`Open this ${String(row.module || "log").toLowerCase()} in its own page`}
+                              className="hover:underline focus:outline-none focus:underline"
+                            >
+                              {row.item_id}
+                            </button>
+                          </td>
                           <td className="p-2.5 font-bold text-gray-500 uppercase text-[10px]">{row.module}</td>
-                          <td className="p-2.5 font-bold text-indigo-700">{row.item_id}</td>
                           <td className="p-2.5 font-medium text-gray-800">{row.account || "—"}</td>
-                          <td className="p-2.5 text-gray-600">{row.manual_project_id || "—"}</td>
                           <td className="p-2.5 text-gray-600">{row.owner || "—"}</td>
                           <td className="p-2.5">
                             <span className={`px-2 py-0.5 rounded-md text-[10px] font-black ${
@@ -886,10 +1145,10 @@ const MonitoringDashboardPage = () => {
                         </motion.tr>
                       );
                     })}
-                    {tatRows.length === 0 && (
+                    {displayedAgingRows.length === 0 && (
                       <tr>
-                        <td colSpan={9} className="p-6 text-center text-gray-400 italic">
-                          No logs currently nearing target date.
+                        <td colSpan={8} className="p-6 text-center text-gray-400 italic">
+                          {agingFilter ? "No records match this aging filter." : "No logs currently nearing target date."}
                         </td>
                       </tr>
                     )}
@@ -901,7 +1160,8 @@ const MonitoringDashboardPage = () => {
             {/* Pagination Controls */}
             <div className="flex items-center justify-between pt-1">
               <span className="text-[11px] text-gray-500 font-semibold">
-                Page {tatPage} of {tatTotalPages}
+                Page {tatPage} of {displayedAgingTotalPages}
+                {agingFilter ? ` · Filtered: ${agingFilter}` : ""}
               </span>
               <div className="flex items-center gap-2">
                 <button
@@ -914,8 +1174,8 @@ const MonitoringDashboardPage = () => {
                 </button>
                 <button
                   type="button"
-                  disabled={tatPage >= tatTotalPages}
-                  onClick={() => setTatPage(p => Math.min(tatTotalPages, p + 1))}
+                  disabled={tatPage >= displayedAgingTotalPages}
+                  onClick={() => setTatPage(p => Math.min(displayedAgingTotalPages, p + 1))}
                   className="px-3 py-1 rounded-lg border border-gray-200 text-xs font-bold text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 transition"
                 >
                   Next
@@ -926,6 +1186,7 @@ const MonitoringDashboardPage = () => {
         </>
       )
       )}
+
     </div>
   );
 };

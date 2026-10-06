@@ -12,6 +12,7 @@ import {
 
 import { buildActionFilters, applyRoleRestrictions } from "../utils/filters.utils.js";
 import { isValidBehalfOf } from "../utils/validation.utils.js";
+import { validateStatusProof, attachmentFields } from "../utils/statusProof.utils.js";
 import { sendSuccess, sendError } from "../utils/response.utils.js";
 import { sendGovernanceEventMail } from "../utils/email.utils.js";
 import { notifyRecordEvent } from "../utils/notify.utils.js";
@@ -61,9 +62,6 @@ export async function getAction(req, res) {
     if (!action) {
       return sendError(res, 404, "Action not found");
     }
-    if (req.user.role === "PM" && action.project_manager !== req.user.name) {
-      return sendError(res, 403, "Forbidden: Not assigned to this record");
-    }
     return sendSuccess(res, action);
   } catch (err) {
     console.error("Error getting action", err);
@@ -93,10 +91,11 @@ export async function createActionHandler(req, res) {
     const created = await createActionModel(payload);
 
     try {
+      const isOnBehalf = !!(created.behalf_of && String(created.behalf_of).trim());
       await sendGovernanceEventMail({
         module: "action",
         recordId: created.action_id || action_id,
-        eventType: "ACTION_ASSIGNED",
+        eventType: isOnBehalf ? "ON_BEHALF_CREATED" : "ACTION_ASSIGNED",
         recordData: created,
         currentUserEmail: req.user.email
       });
@@ -114,17 +113,28 @@ export async function createActionHandler(req, res) {
 export async function updateActionHandler(req, res) {
   try {
     const { id } = req.params;
-    const payload = req.body;
 
-    if (!isValidBehalfOf(payload.behalf_of)) {
+    if (!isValidBehalfOf(req.body.behalf_of)) {
       return sendError(res, 400, "Behalf Of must be a valid @arche.global email address");
     }
-
-    const existing = await findActionById(id);
+        const existing = await findActionById(id);
     if (!existing) return sendError(res, 404, "Action not found");
 
+    // Merge so partial updates (e.g. status-only) do not wipe existing fields.
+    // Action model reads mapped names (action_item, target_date, responsible, remarks).
+    const payload = { ...existing, ...req.body };
+    payload.action_id = existing.action_id;
+
     const oldStatus = existing.status;
-    const newStatus = payload.status;
+    const newStatus = payload.status || oldStatus;
+
+    const proofError = validateStatusProof({
+      oldStatus,
+      newStatus,
+      remarks: payload.remarks || payload.comments,
+      hasAttachment: Boolean(req.file),
+    });
+    if (proofError) return sendError(res, 400, proofError);
 
     const updated = await updateActionModel(id, payload);
 
@@ -137,6 +147,7 @@ export async function updateActionHandler(req, res) {
           old_status: oldStatus,
           new_status: newStatus,
           remarks: payload.remarks || payload.comments,
+          ...attachmentFields(req.file),
         });
       } catch (hErr) {
         console.error("Failed to save action history entry:", hErr);
